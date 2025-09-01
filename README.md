@@ -178,7 +178,7 @@ python train_spines.py --model_name "small" --batch_size 16
 ### 📁 Data Format
 
 #### Input Requirements
-- **Image Format**: TIFF format
+- **Image Format**: TIFF, .d3set (to reproduce training results)
 - **Dimensions**: 3D volumes (Z×Y×X) 
 - **Bit Depth**: 8-bit or 16-bit grayscale
 - **Size**: Tested up to 2048×2048×500 voxels
