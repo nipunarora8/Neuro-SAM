@@ -248,7 +248,7 @@ if __name__ == "__main__":
     else:
         # Try to load a default benchmark image
         try:
-            default_path = './dataset/DeepD3_Benchmark.tif'
+            default_path = './DeepD3_Benchmark.tif'
             print(f"No image path provided, trying to load default: {default_path}")
             spacing_xyz = (args.x_spacing, args.y_spacing, args.z_spacing)
             viewer = run_neuro_sam(image_path=default_path, spacing_xyz=spacing_xyz)
