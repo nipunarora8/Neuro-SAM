@@ -1,0 +1,178 @@
+\chapter{Template Features}
+This chapter gives examples on what you can do with this template. It's just a brief overview. Please consult the common sources on how to write scientific documents and documents with \LaTeX.
+
+\section{Structure}
+This template provides three structural levels that appear in the table of contents: \texttt{\textbackslash chapter}, \texttt{\textbackslash section}, and \texttt{\textbackslash subsection}. Chapters will always start on a new page. Additionally, you can use \texttt{\textbackslash subsubsection} and \texttt{\textbackslash paragraph} as non-hierarchical means to structure your thesis.
+
+
+\subsection{Lists}
+You can use the default \LaTeX \- functions for writing lists, viz., \texttt{\textbackslash enumerate} for numbered lists and \texttt{\textbackslash itemize} for bullet point lists. Again, the \texttt{\textbackslash subsubsection} and \texttt{\textbackslash paragraph} can be used as structural elements, e.g., when listing definitions of terms.
+
+Lists with points and dashes
+\begin{itemize}
+\item Point 1
+\item Point 2
+    \begin{itemize}
+    \item Point 1
+    \item Point 2
+    \end{itemize}
+\end{itemize}
+
+or numbered
+\begin{enumerate}
+\item Point 1
+\item Point 2
+\end{enumerate}
+
+\subsection{Footnotes}
+Footnotes are continuously numbered throughout the document. Use the \texttt{\textbackslash footnote\{text\}} command.  They appear on the page their reference is on \footnote{This is an exemplary footnote.}. Footnotes have to be placed without whitespace behind the word and within the sentence boundaries, i.e., before the period.
+
+\subsection{ToDo-Notes}
+You can use ToDo notes using the \texttt{\textbackslash todo\{text\}}  command. Please make sure to remove any ToDo notes before handing in your thesis! \todo[inline]{ToDo: Remove me before publishing}
+
+\subsection{Abbreviations}
+You can use abbreviations like these: \gls{CAM}. Note that on the first occurrence, both the acronym and the full wording are displayed. After that, each occurrence uses the abbreviation: \gls{CAM}. A longer example: \gls{Grad-CAM}.
+
+\section{Formatting Text}
+\LaTeX \- provides \texttt{\textbackslash textit\{text\}} for \textit{italics}, \texttt{\textbackslash textbf\{text\}} for \textbf{bold face}, \texttt{\textbackslash texttt\{text\}} for \texttt{typewriter}, \texttt{\textbackslash textsc\{text\}} for \textsc{small caps}, \texttt{\textbackslash underline\{text\}} for \underline{underline}. Additionally, the template provides  \texttt{\textbackslash texthl\{text\}} for \texthl{highlighted text}. Please remove any highlighted text before handing in your thesis!
+
+\section{Tables}
+
+\begin{table}[caption={Table Example 1}, label=tab:table1]
+    \centering
+        \begin{tabular}{|l|cc|}
+            \hline
+            \hline
+                a & b & c \\
+            \hline
+            \hline
+                a & y  & z \\
+            \hline
+                1 & 2 & 3 \\
+            \hline
+            \hline
+        \end{tabular}
+\end{table}
+
+\begin{table}[caption={Table Example 2}, label=tab:table2]
+	\centering
+		\begin{tabular}{c c c}
+			\toprule
+			{\bf A} & {\bf B} & {\bf C} \\ \midrule
+			    x & y & z \\
+                1 & 2 & 3 \\
+                4 & 5 & 6 \\
+			\midrule
+		\end{tabular}
+\end{table}
+
+\section{Figures}
+
+The \texttt{figure} environment is wrapped around images. These images should either be included as PDF-file via \texttt{\textbackslash includegraphics}, or created via \textit{TikZ/PGF}. For included images, make sure to use high-resolution images, preferably vector images.
+
+Figures float, i.e., they do not necessarily appear at exact the same position you have defined them. Make sure to set a  \textit{caption} and an optional \textit{label} as figure parameters. 
+
+\begin{figure}[label={fig:fig1}, caption={Anki Lab Logo}]
+    \includegraphics[width=.6\textwidth]{figures/anki_logo.png} 
+\end{figure}
+
+Another possibility is to use non-floating figures. Figure \ref{fig:fig2} is an example of this. For more information, see \cite{forcefigureplacement}.
+
+\begin{center}
+    \includegraphics[width=.6\textwidth]{figures/anki_logo.png} 
+    \captionof{figure}{Anki Lab Logo}
+    \label{fig:fig2}
+\end{center}
+
+
+\subsection{Subfigures}
+Sometimes it might be handy to contrast figures, i.e., by placing them next to each other. The template uses the \textit{subcaption} package to provide subfigures. The following example contains two figures, where each subfigure has its own \texttt{\textbackslash label} and \texttt{\textbackslash caption}. Additionally, the whole figure has its own \textit{caption} and \textit{label}. That means, you can reference subfigures  Figure \ref{fig:subfig1} and Figure  \ref{fig:subfig}.
+
+Subfigures are not limited to images, but may also include listings or tables. Figure \ref{fig:subfig} shows a sample database query expressed in SQL (Figure \ref{fig:subfig1}) and as query plan in relational algebra  (Figure \ref{fig:subfig2}).
+ 
+\begin{figure}[caption={Exemplary use of subfigures}, label={fig:subfig}]
+	
+	\begin{subfigure}[b]{.45\textwidth}
+		
+		\begin{lstlisting}[nolol, language=SQL]
+		SELECT b, d FROM 
+			EXAMPLE.RELATION1 r,
+			EXAMPLE.RELATION2 s,
+		WHERE 
+			r.a = 'c'
+		AND 
+			s.e = 2
+		AND 
+			r.c = s.c; 
+		\end{lstlisting}
+		\caption{SQL select statement}\label{fig:subfig1}
+	\end{subfigure}
+	\begin{subfigure}[b]{.53\textwidth}
+		\centering	
+		\begin{tikzpicture}[node distance = 2cm, auto,
+		database/.style={
+			cylinder,
+			cylinder uses custom fill,
+			cylinder body fill=gray!30,
+			cylinder end fill=gray!20,
+			shape border rotate=90,
+			aspect=0.25,
+			draw
+		}]
+		\node [] (queue) {$\Pi_{b, d}$};
+		\node [below of=queue] (join) {$\Join_{r.c = s.c}$};
+		
+		\node [below left of=join,xshift=-1cm] (l1) {$\sigma_{r.a = 'c'}$};
+		\node [database, below of=l1] (l2) {\texttt{r}};
+		
+		\node [below right of=join,xshift=1cm] (r1) {$\sigma_{s.e = 2}$};
+		\node [database,below of=r1] (r2) {\texttt{s}};
+		
+		\draw [<-] (queue) -- (join);
+		\draw [<-] (join) -- (r1);
+		\draw [<-] (r1) -- (r2);
+		\draw [<-] (join) -- (l1);
+		\draw [<-] (l1) -- (l2);
+		\end{tikzpicture}
+		\caption{Sample evaluation plan}\label{fig:subfig2}
+	\end{subfigure}
+\end{figure}
+
+\section{Listings}
+You can use listings to typeset source code. This template uses the \textit{listings} package. Wrap code inside the \texttt{lstlisting} environment and set the \textit{language} (e.g., Python, Java), \textit{caption}, and optional \textit{label} parameters. If the source code highlighting highlights the wrong keywords or misses keywords, use the \textit{deletekeywords} resp. \textit{morekeywords} parameters. Consult the package documentation for further information.
+
+\begin{lstlisting}[float=htp, caption={Simple function implemented in Python}, label={lst:euclid}, language=Python, deletekeywords={}, morekeywords={}]
+def add_one(n):
+    return n+1
+\end{lstlisting}
+
+\section{Algorithms}
+Some users might require specifying algorithms. This template uses the \textit{algorithm}, \textit{algorithmicx}, and \textit{algopseudocode} packages. Consult the respective manuals for further information. 
+The example shows algorithm \ref{alg1}.
+
+\begin{algorithm}[htb]
+\footnotesize
+\begin{algorithmic}[1]
+    \State Step 1
+    \State Step 2 
+    \If {$(a != b)$}
+  	    \State Step 3.1
+    \Else 
+  	    \State Step 3.2
+    \EndIf
+\end{algorithmic}
+\caption{\label{alg1} Example algorithm}
+\end{algorithm}
+
+\section{Citations and Bibliography}
+This template uses {BibTeX} for bibliographies. Of course, you have to maintain a clean \path{library.bib} file that caters all necessary attributes. References will appear in the order in which they appear in the text.
+
+Citing in the text is done with the \textbackslash cite\{<citekey>\}.
+
+\paragraph{Exemplary citations}
+
+\begin{itemize}
+	\item See \cite{Kist2021featurebased} for further information.
+	\item ... like in \cite{Kist2021openhsv}.
+\end{itemize}
+

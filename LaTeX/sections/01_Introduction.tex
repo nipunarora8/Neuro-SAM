@@ -1,0 +1,66 @@
+\chapter{Introduction}
+
+Understanding the structure of neurons, particularly dendrites and their spines, is critical to uncovering how the brain encodes, processes, and stores information. Dendritic spines, small protrusions emerging from dendritic shafts, are the primary postsynaptic sites for excitatory synaptic transmission \cite{Yuste_1995}. Their shape and density are tightly linked to key neurophysiological processes such as synaptic plasticity, learning, and memory formation \cite{Yuste_2001, Pfeiffer_2018}. Importantly, alterations in dendritic spine morphology are associated with a range of neurodevelopmental, neurodegenerative, and psychiatric disorders \cite{Rodriguez_2008, Dickstein_2016}. This makes them essential biomarkers in both basic and translational neuroscience.
+
+Recent advances in high-resolution microscopy, such as two-photon and confocal imaging, have enabled the visualization of these microstructures at increasingly fine spatial and temporal scales. Despite advances in imaging, spine quantification remains a bottleneck due to the time-intensive and inconsistent nature of manual annotation \cite{Fernholz_2024}. In response to these limitations, the development of robust, automated, and generalizable segmentation methods has become an increasingly important challenge. However, many existing approaches are limited by narrow design assumptions and poor adaptability to varying imaging conditions. This thesis aims to investigate that challenge. 
+
+\section{Dendrites and Dendritic Spines}
+
+Neurons, the core computational units of the brain, form complex circuits through synaptic connections. A defining feature of many excitatory synapses are the dendritic spines, small, actin-rich protrusions extending from dendritic shafts that serve as the primary postsynaptic sites for excitatory neurotransmission in the central nervous system \cite{Yuste_1995}. Their shape, density, and plasticity are tightly linked to synaptic strength and learning mechanisms such as \gls{LTP} and \gls{LTD} \cite{Yuste_2001, Pfeiffer_2018}. Given their structural variability and high density, spines remain difficult to resolve and quantify in microscopy data. Spine abnormalities are widely implicated in neurological and psychiatric disorders, underscoring their importance as biomarkers \cite{Rodriguez_2008, Dickstein_2016}.
+
+Dendrites, the branched projections of neurons, integrate synaptic inputs and shape neuronal excitability. Their morphology including branching complexity and spatial layout affects how signals propagate through neural circuits \cite{Peng_2015}. Structural alterations in dendrites have been associated with aging, injury, and various neurodegenerative conditions, motivating accurate morphometric analysis alongside spine quantification \cite{Frank_2018}.
+
+\section{Challenges in Dendrite and Dendritic Spine Quantification}
+The segmentation of dendrites and their associated spines from microscopy data remains a deeply challenging task due to the inherent complexity of neuronal morphology, the limitations of imaging modalities, and the rigid demands of model generalizability across experimental conditions.
+At the biological level, dendrites form intricate, tree-like structures with highly variable branching patterns and diameters. Dendritic spines are often less than 1 µm in diameter and appear in high densities along dendritic shafts. Their morphology varies substantially, with spine types such as thin, stubby, mushroom, and branched forms often coexisting within the same field of view \cite{Rodriguez_2008, Vidaurre_2022}. This morphological diversity introduces ambiguity in defining precise segmentation boundaries, particularly when spines partially overlap or blend with dendritic trunks in volumetric datasets.
+
+Compounding the biological complexity are the variabilities introduced by microscopy and sample preparation. Fluorescence intensity, background noise, and \gls{SNR} can differ significantly across experiments. Imaging artifacts, photobleaching, motion blur, and differences in labeling protocols further degrade image quality \cite{Xiao_2018, Koh_2002}. Even datasets of the same brain region, acquired under slightly different imaging conditions, can yield fundamentally different visual patterns. This makes it difficult for models trained on one dataset to perform well on another without extensive retraining.
+
+Classical segmentation methods, such as intensity thresholding, region growing, and watershed algorithms, often struggle with the fine granularity and discontinuity of spine signals. These approaches lack adaptability and typically fail under conditions of low contrast or spatial ambiguity \cite{Koh_2002}. While deep learning methods such as U-Net \cite{Ronneberger_2015} and its derivatives have shown improved segmentation capabilities, they also suffer from overfitting to domain-specific data. For instance, models trained on two-photon images from mouse hippocampus may fail when applied to confocal images of human cortical tissue without substantial fine-tuning \cite{Xiao_2018, Singh_2017}.
+
+Recent work, such as \gls{DeepD3}, has addressed several of these issues by training models on heterogeneous datasets annotated by multiple experts \cite{Fernholz_2024}. \gls{DeepD3}’s dual-decoder architecture separately predicts dendrite and spine masks, improving segmentation quality and accuracy across data modalities. However, even such robust architectures require task-specific data preprocessing and hyperparameter tuning for optimal performance. Additionally, they still rely on supervision from high-quality, pixel-accurate annotations, which are difficult to obtain at scale.
+
+Perhaps the most persistent computational challenge is that of generalization. Most existing models \cite{Xiao_2018,Rodriguez_2008,Vidaurre_2022,Fernholz_2024} implicitly assume that training and deployment datasets come from the same distribution, which is rarely true in biological imaging. Imaging conditions, species differences, anatomical variability, and labeling inconsistencies all conspire to create substantial domain shifts. Models that fail to account for such variability tend to exhibit brittle performance, limiting their usability in real-world neuroscience workflows.
+
+Together, these challenges motivate the development of segmentation frameworks that are not only accurate but also data-efficient, annotation-light, and robust across diverse biological and imaging domains.
+
+\section{Research Question}
+This thesis investigates the use of foundation models namely \gls{SAM} \cite{Kirillov_2023} and it's variants to segment dendrites and dendritic spines in high-resolution microscopy images of neural tissue. These structures are central to understanding synaptic connectivity, plasticity, and circuit-level computations in the brain. Foundation models offer a promising alternative to domain-specific deep learning methods by enabling generalization across diverse imaging conditions, species, and brain regions with minimal retraining. This thesis is motivated by the research question: "Can foundation models like \gls{SAM} with zero or minimal fine-tuning be effectively used to produce biologically meaningful segmentation of dendrites and dendritic spines?"
+
+% To address this question, the thesis sets out the following objectives:
+
+% \begin{itemize}
+% \item Investigate the suitability of multiple \gls{SAM}-based architectures including \gls{SAM}, \gls{SAM} + Low Rank Adaptation (\gls{LoRA}), and \gls{SAM}v2 for segmenting dendritic structures under varied imaging conditions.
+% \item Develop \textbf{Neuro-\gls{SAM}}, a tailored, interactive segmentation pipeline that enables dendrite path tracing, dendrite segmentation, spine detection, and spine segmentation.
+% \item Evaluate the segmentation performance of \textbf{Neuro-\gls{SAM}} against state-of-the-art methods such as \gls{DeepD3} on an expert-annotated benchmark dataset.
+% \item Assess the generalization ability of \textbf{Neuro-\gls{SAM}} across different microscopy types, species, anatomical regions, and voxel resolutions.
+% % \item Quantify annotation efficiency and assess the extent to which prompt-based segmentation reduces manual labor while maintaining biological accuracy.
+% \end{itemize}
+
+% Together, these objectives aim to validate the viability of foundation model based segmentation as a scalable, robust, and generalizable solution for neuroanatomical image analysis.
+
+
+\section{Key Contributions}
+
+To address the research question mentioned in the previous section, this thesis makes the following primary contributions to the field of neuroanatomical image analysis:
+
+\begin{itemize}
+\item \textbf{A systematic investigation of foundation models for dendritic structure segmentation:} Multiple \gls{SAM}-based architectures such as \gls{SAM}, \gls{SAM}+\gls{LoRA}, and \gls{SAMv2} were evaluated on expert-annotated microscopy data to identify their strengths and limitations in segmenting dendrites and dendritic spines.
+
+\item \textbf{Design and implementation of \textbf{Neuro-\gls{SAM}}:} A tailored segmentation pipeline was developed that enables interactive dendrite path tracing, dendrite segmentation, spine detection, and spine segmentation. \textbf{Neuro-\gls{SAM}} combines the generalization capabilities of foundation models with neuroscience-specific workflow requirements.
+
+\item \textbf{Benchmarking on multi-rater, high-resolution datasets:} \textbf{Neuro-\gls{SAM}} was evaluated on a benchmark dataset derived from the \gls{DeepD3} framework, incorporating multi-rater consensus labels to ensure fair and biologically meaningful evaluation.
+
+\item \textbf{Cross-domain generalization analysis:} The generalization capacity of \textbf{Neuro-\gls{SAM}} was tested across datasets involving different species, brain regions, microscopy modalities, fluorophores, and voxel resolutions.
+
+% \item \textbf{Reduction of annotation burden through prompt-based segmentation:} The thesis demonstrates how prompt-driven segmentation workflows, as enabled by foundation models, can significantly reduce manual labeling requirements while maintaining interpretability and reproducibility.
+\end{itemize}
+
+These contributions collectively advance the use of general-purpose vision models in neuroscience, demonstrating that foundation models when carefully adapted can enable scalable, robust, and interactive segmentation of dendritic structures across diverse experimental settings.
+
+
+
+
+
+
+

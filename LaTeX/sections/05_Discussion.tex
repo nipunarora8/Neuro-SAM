@@ -1,0 +1,22 @@
+\chapter{Discussion}
+
+This chapter reflects on the strengths and limitations of Neuro-\gls{SAM}, placing its results in context and outlining concrete directions for future research. While the system demonstrates strong performance across tasks and datasets, several challenges remain that require further exploration and refinement.
+
+\section{Limitations}
+
+Despite its overall effectiveness, Neuro-\gls{SAM} presents several limitations that highlight directions for future improvement. First, while the path tracing module is interactive and efficient, it still depends on user-specified start, end, and optional waypoint inputs. Although minimal, this manual dependency limits full automation in large-scale reconstructions.
+
+Second, the segmentation module lacks robust use of negative prompts, which constrains the model’s ability to suppress adjacent structures or competing regions. This is particularly relevant in dendrite segmentation where overlapping signals could be actively excluded using such prompts, but currently are not. Similarly, in the spine segmentation module, no negative prompting is used at all, leading to occasional false positives in background regions or over-segmentation of spine clusters.
+
+Additionally, the spine detection module, while effective in most cases, employs a linear blob-finding approach that lacks the nonlinear decision boundaries typically offered by learning-based classifiers. This limits its capacity to differentiate between fine spines and noise in low signal-to-noise contexts. Errors in the spine segmentation module are especially evident in cases of elongated spines, fused spine necks, or ambiguous morphological boundaries, where the model may either miss a structure entirely or merge multiple spines into one. These limitations suggest the need for richer prompt engineering, advanced instance refinement, and incorporation of better models for enhanced structural accuracy.
+
+
+\section{Future Work}
+
+Several future directions can further enhance the capabilities of Neuro-\gls{SAM}. First, the path tracing module could be extended into a fully automated system by incorporating dynamic exploration strategies or learning-based path proposal networks. Such an approach could reduce the need for manual input and improve consistency across long or branching dendritic structures. Integrating active correction during tracing could also enable real-time quality control and refinement.
+
+For the segmentation modules, future iterations may leverage the full 3D capabilities of \gls{SAMv2} during both training and inference. Currently, segmentation is performed on 2D slices with patch-level overlap; using native 3D context would allow better spatial continuity and robustness, especially around curved dendrites and spine necks. Similarly, incorporating well-structured negative prompts, especially in spine segmentation, could greatly reduce false positives and improve precision in densely labeled regions.
+
+In terms of spine detection, moving beyond dual-view spine exploration to a more expressive, learning-based approach could offer better separation between true spines and background noise. Graph-based reasoning, shape-aware classification, or small CNN classifiers trained on frontal and tubular views could provide the nonlinearity and morphological sensitivity needed for reliable detection across diverse imaging conditions.
+
+Lastly, while Neuro-\gls{SAM} generalizes well to multiple test datasets, further improvements could be achieved by fine-tuning the model across different microscopy modalities, staining protocols, and voxel resolutions. This would not only improve generalization but also make Neuro-\gls{SAM} deployable across a wider range of neuroscience labs and imaging platforms.
