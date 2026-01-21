@@ -35,26 +35,53 @@ def compute_tangent_vectors_fast(path_array):
 
 @nb.njit(cache=True)
 def create_orthogonal_basis_fast(forward):
-    """Fast orthogonal basis creation"""
-    # Find least aligned axis
-    axis_alignments = np.abs(forward)
-    least_aligned_idx = np.argmin(axis_alignments)
+    """
+    Fast orthogonal basis creation with strict global alignment.
+    Constructs 'Right' from 'Global Y x Forward' to naturally align with Global X.
+    Ensures 'Up' aligns with Global Y (Screen Down).
+    """
+    # Normalize forward vector to ensure stability
+    f_norm = np.sqrt(np.sum(forward**2))
+    if f_norm > 1e-6:
+        forward = forward / f_norm
+    else:
+        # Degenerate case: use default forward along Z
+        forward = np.array([1.0, 0.0, 0.0])
+
+    # 1. Propose Up vector as Global Y (0,1,0)
+    # If forward is vertical (parallel to Y), use Global X (0,0,1) as temp up
+    if abs(forward[1]) > 0.99:
+        proposal_up = np.array([0.0, 0.0, 1.0])
+    else:
+        proposal_up = np.array([0.0, 1.0, 0.0])
+        
+    # 2. Compute Right vector = Cross(Proposal_Up, Forward)
+    # Note order: Up x Forward. 
+    # For Forward=Z (1,0,0), Y x Z = X (0,0,1).
+    # For Forward=-Z (-1,0,0), Y x -Z = X (0,0,1).
+    # This naturally tends to keep Right aligned with Global X.
+    right = np.cross(proposal_up, forward)
+    right_norm = np.sqrt(np.sum(right**2))
     
-    reference = np.zeros(3, dtype=np.float64)
-    reference[least_aligned_idx] = 1.0
-    
-    # Cross product for right vector
-    right = np.cross(forward, reference)
-    right_norm = np.sqrt(right[0]**2 + right[1]**2 + right[2]**2)
-    if right_norm > 0:
+    if right_norm > 1e-6:
         right = right / right_norm
-    
-    # Cross product for up vector
-    up = np.cross(right, forward)
-    up_norm = np.sqrt(up[0]**2 + up[1]**2 + up[2]**2)
-    if up_norm > 0:
+    else:
+        right = np.array([0.0, 0.0, 1.0]) 
+
+    # 3. Compute Real Up vector = Cross(Forward, Right)
+    # Note order: Forward x Right.
+    # For Forward=Z, Z x X = Y.
+    # For Forward=-Z, -Z x X = -Y.
+    up = np.cross(forward, right)
+    up_norm = np.sqrt(np.sum(up**2))
+    if up_norm > 1e-6:
         up = up / up_norm
-    
+        
+    # 4. Strict Alignment Check
+    # Ensure Up points generally +Y (Screen Down)
+    if up[1] < 0: 
+        up = -up
+
     return up, right
 
 @nb.njit(cache=True, parallel=True)

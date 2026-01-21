@@ -9,7 +9,15 @@ from napari_utils.segmentation_module import SegmentationWidget
 from napari_utils.spine_detection_module import SpineDetectionWidget
 from napari_utils.spine_segmentation_module import SpineSegmentationWidget
 from napari_utils.visualization_module import PathVisualizationWidget
+from napari_utils.visualization_module import PathVisualizationWidget
 from napari_utils.anisotropic_scaling import AnisotropicScaler
+
+import sys
+import os
+# Add root directory to path to import brightest_path_lib
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from brightest_path_lib.visualization.tube_data import create_tube_data
+
 
 
 class NeuroSAMWidget(QWidget):
@@ -55,8 +63,14 @@ class NeuroSAMWidget(QWidget):
             'spine_data': {},         # Enhanced spine detection data
             'spine_segmentation_layers': {},  # Dictionary of spine segmentation layers
             'current_spacing_xyz': original_spacing_xyz,  # Current voxel spacing
+            'spine_segmentation_layers': {},  # Dictionary of spine segmentation layers
+            'current_spacing_xyz': original_spacing_xyz,  # Current voxel spacing
             'scaler': self.scaler,    # Reference to scaler for coordinate conversion
         }
+        
+        # Tube View State
+        self.tube_view_active = False
+        self.saved_layer_states = {} # Stores {layer_name: visible}
         
         # Initialize the waypoints layer
         self.state['waypoints_layer'] = self.viewer.add_points(
@@ -98,6 +112,10 @@ class NeuroSAMWidget(QWidget):
         self.tabs.addTab(self.spine_segmentation_widget, "Spine Segmentation")
         
         # Connect signals between modules
+        self._connect_signals()
+
+        # Add Tubular View button to the toolbar
+        self.add_tubular_view_button()
         self._connect_signals()
         
         # Set up event handling for points layers
@@ -793,3 +811,288 @@ class NeuroSAMWidget(QWidget):
         Useful for loading previous results
         """
         return self.scaler.scale_coordinates(coordinates)
+    def add_tubular_view_button(self):
+        """Add a button to the viewer's bottom toolbar for tubular view"""
+        try:
+             # Access the internal Qt viewer buttons layout
+             if hasattr(self.viewer.window, 'qt_viewer'):
+                 qt_viewer = self.viewer.window.qt_viewer
+                 
+                 # The buttons are usually in qt_viewer.viewerButtons
+                 if hasattr(qt_viewer, 'viewerButtons'):
+                     buttons_widget = qt_viewer.viewerButtons
+                     layout = buttons_widget.layout()
+                     
+                     # Create our button
+                     self.btn_tubular_view = QPushButton()
+                     self.btn_tubular_view.setToolTip("Toggle Tubular View")
+                     self.btn_tubular_view.setFixedWidth(28) # Standard width for napari buttons
+                     self.btn_tubular_view.setFixedHeight(28)
+                     
+                     # Set Icon using qtawesome (standard in napari)
+                     try:
+                         import qtawesome as qta
+                         icon = qta.icon('fa.dot-circle-o', color='#909090')
+                         self.btn_tubular_view.setIcon(icon)
+                     except ImportError:
+                         self.btn_tubular_view.setText("O") # Fallback
+                     
+                     self.btn_tubular_view.clicked.connect(self.toggle_tubular_view)
+                     
+                     # Find location to insert (next to Home/Reset button)
+                     # Standard buttons: Console, Layer, Roll, Transpose, Grid, Home
+                     index_to_insert = -1
+                     for i in range(layout.count()):
+                         item = layout.itemAt(i)
+                         widget = item.widget()
+                         if widget and (
+                             "home" in widget.toolTip().lower() or 
+                             "reset view" in widget.toolTip().lower()
+                         ):
+                             index_to_insert = i + 1
+                             break
+                     
+                     if index_to_insert != -1:
+                         layout.insertWidget(index_to_insert, self.btn_tubular_view)
+                     else:
+                         # Fallback: add to end if home button not found
+                         layout.addWidget(self.btn_tubular_view)
+                         
+                 else:
+                     print("Could not find viewerButtons to add Tubular View button.")
+        except Exception as e:
+            print(f"Failed to add Tubular View button: {e}")
+
+    def resample_path_equidistant(self, path, step=1.0):
+        """
+        Resample a 3D path to have equidistant points.
+        Includes duplicate removal and Gaussian smoothing for stability.
+        """
+        if len(path) < 2:
+            return path
+        
+        path = np.array(path, dtype=np.float64)
+        
+        # 1. Remove consecutive duplicates to prevent 0-distance steps
+        # Compare each point to the previous one
+        not_duplicate = np.concatenate(([True], np.any(np.diff(path, axis=0) != 0, axis=1)))
+        clean_path = path[not_duplicate]
+        
+        if len(clean_path) < 2:
+            return path # Fallback
+            
+        # 2. Smooth the path coordinates to reduce pixel-grid jitter
+        # This fixes the "messy" tube view visualization
+        from scipy.ndimage import gaussian_filter1d
+        # Sigma=2.0 is usually a good balance for pixel-level paths
+        smooth_path = gaussian_filter1d(clean_path, sigma=2.0, axis=0)
+        
+        # 3. Calculate cumulative distance
+        diffs = np.diff(smooth_path, axis=0)
+        dists = np.sqrt((diffs ** 2).sum(axis=1))
+        
+        # Ensure strict monotonicity for interp1d
+        cum_dist = np.concatenate(([0], np.cumsum(dists)))
+        
+        # Handle case where smoothing might have created zero-dist steps (unlikely but safe)
+        if len(cum_dist) != len(np.unique(cum_dist)):
+             # Fallback: add tiny epsilon to ensure strict increase
+             cum_dist = cum_dist + np.linspace(0, 1e-5, len(cum_dist))
+        
+        total_length = cum_dist[-1]
+        if total_length <= 0:
+            return path
+            
+        # 4. Create new equidistant distances
+        num_points = int(np.ceil(total_length / step))
+        if num_points < 2:
+            num_points = 2
+            
+        new_dists = np.linspace(0, total_length, num_points)
+        
+        # 5. Interpolate
+        from scipy.interpolate import interp1d
+        new_path = np.zeros((num_points, 3))
+        
+        for i in range(3):
+            # Kind='linear' is sufficient because we already smoothed the data
+            f = interp1d(cum_dist, smooth_path[:, i], kind='linear')
+            new_path[:, i] = f(new_dists)
+            
+        return new_path
+
+    def toggle_tubular_view(self):
+        """Toggle between normal view and the combined tubular view"""
+        if self.tube_view_active:
+            # --- EXIT TUBE MODE ---
+            # 1. Remove Combined View layer
+            layers_to_remove = [l for l in self.viewer.layers if l.name.startswith("Combined View")]
+            for l in layers_to_remove:
+                self.viewer.layers.remove(l)
+            
+            # 2. Restore visibility of previous layers
+            for layer in self.viewer.layers:
+                if layer.name in self.saved_layer_states:
+                    layer.visible = self.saved_layer_states[layer.name]
+            
+            # Clear saved state
+            self.saved_layer_states.clear()
+            
+            # 3. Reset Camera
+            self.viewer.reset_view()
+            
+            # 4. Update State & UI
+            self.tube_view_active = False
+            # Icon handles state visually by context, no text change needed.
+                
+            napari.utils.notifications.show_info("Exited Tubular View Mode")
+            
+        else:
+            # --- ENTER TUBE MODE ---
+            current_path_id = self.state.get('current_path_id')
+            if not current_path_id:
+                napari.utils.notifications.show_warning("Please select a path first.")
+                return
+
+            path_data = self.state['paths'].get(current_path_id)
+            if not path_data:
+                return
+
+            path_name = path_data['name']
+            
+            # Check for segmentation layer (mask)
+            seg_layer_name = f"Segmentation - {path_name}"
+            segmentation_mask = None
+            for layer in self.viewer.layers:
+                if layer.name == seg_layer_name:
+                    segmentation_mask = layer.data
+                    break
+            
+            if segmentation_mask is None:
+                 napari.utils.notifications.show_warning(f"No segmentation found for {path_name}. Please segment the dendrite first.")
+                 return
+
+            # Store current visibility state
+            self.saved_layer_states = {layer.name: layer.visible for layer in self.viewer.layers}
+            
+            # Hide ALL layers
+            for layer in self.viewer.layers:
+                layer.visible = False
+            
+            # --- GENERATION LOGIC ---
+            # Get existing path points
+            existing_path = path_data['data']
+            
+            # Resample the path
+            interpolated_path = self.resample_path_equidistant(existing_path, step=1.0)
+            
+            points_list = [interpolated_path[0].tolist(), interpolated_path[-1].tolist()]
+            
+            # Parameters
+            fov_pixels = 50 
+            zoom_size_pixels = 50
+            
+            try:
+                napari.utils.notifications.show_info(f"Generating smooth tubular view for {path_name}...")
+                
+                # Call create_tube_data
+                tube_data = create_tube_data(
+                    image=self.current_image, 
+                    points_list=points_list, 
+                    existing_path=interpolated_path, 
+                    view_distance=1,
+                    field_of_view=fov_pixels,
+                    zoom_size=zoom_size_pixels,
+                    reference_image=segmentation_mask,
+                    enable_parallel=True,
+                    verbose=False
+                )
+                
+                if not tube_data:
+                    # Restore state on failure
+                    for layer in self.viewer.layers:
+                        if layer.name in self.saved_layer_states:
+                           layer.visible = self.saved_layer_states[layer.name]
+                    napari.utils.notifications.show_warning("Failed to generate tube data.")
+                    return
+    
+                # Prepare Combined View stacks
+                combined_stack = []
+                
+                for frame in tube_data:
+                    # 1. Get the tubular view (normal plane)
+                    tube_view = frame['normal_plane'] 
+                    
+                    # 2. Get the zoomed 2D patch
+                    zoom_view = frame['zoom_patch']   
+                    
+                    # 3. Resize zoom view to match tube view height/width
+                    if zoom_view.shape != tube_view.shape:
+                        import cv2
+                        target_h, target_w = tube_view.shape
+                        zoom_view = cv2.resize(zoom_view, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+    
+                    # 4. Create a separator line
+                    separator = np.ones((tube_view.shape[0], 1), dtype=tube_view.dtype) * np.max(tube_view)
+                    
+                    # 5. Concatenate
+                    combined_frame = np.concatenate([zoom_view, separator, tube_view], axis=1)
+                    combined_stack.append(combined_frame)
+                
+                # Convert to numpy array
+                final_stack = np.array(combined_stack)
+                
+                # Add to viewer as a new layer
+                layer_name = f"Combined View - {path_name}"
+                
+                # Remove existing if any (though we hid everything, strictly speaking we should remove old combined views to avoid duplicates)
+                for layer in list(self.viewer.layers):
+                     if layer.name == layer_name:
+                         self.viewer.layers.remove(layer)
+                
+                layer = self.viewer.add_image(
+                    final_stack, 
+                    name=layer_name, 
+                    colormap='gray',
+                    interpolation='nearest'
+                )
+                
+                # Force 2D view
+                self.viewer.dims.ndisplay = 2
+                
+                # Activate the layer 
+                self.viewer.layers.selection.active = layer
+                
+                # Manual Zoom and Center Logic
+                # The combined view is small (approx 92x51 pixels).
+                # reset_view() often considers the whole 'world' extent including hidden layers.
+                # So we manually force the camera to look at our new small layer.
+                
+                h, w = final_stack.shape[1], final_stack.shape[2]
+                center_y = h / 2
+                center_x = w / 2
+                
+                # Set camera center to the middle of the tube view frame
+                # Napari 2D camera center is usually (y, x)
+                self.viewer.camera.center = (center_y, center_x)
+                
+                # Set a high zoom level to fill the screen
+                # A zoom of 1.0 means 1 screen pixel = 1 data pixel.
+                # Use a zoom of 10-15 to make it comfortably large.
+                self.viewer.camera.zoom = 10.0
+                
+                # Update State & UI
+                self.tube_view_active = True
+                
+                # Optionally change icon color or state here if needed
+                # For now, just keep the icon stable
+                    
+                napari.utils.notifications.show_info(f"Entered Tubular View Mode for {path_name}")
+
+            except Exception as e:
+                print(f"Error generating view: {e}")
+                # Restore state on error
+                for layer in self.viewer.layers:
+                     if layer.name in self.saved_layer_states:
+                         layer.visible = self.saved_layer_states[layer.name]
+                napari.utils.notifications.show_error(f"Error: {e}")
