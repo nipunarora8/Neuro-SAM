@@ -6,8 +6,7 @@ from qtpy.QtWidgets import (
 
 from napari_utils.path_tracing_module import PathTracingWidget
 from napari_utils.segmentation_module import SegmentationWidget
-from napari_utils.spine_detection_module import SpineDetectionWidget
-from napari_utils.spine_segmentation_module import SpineSegmentationWidget
+from napari_utils.punet_widget import PunetSpineSegmentationWidget
 from napari_utils.visualization_module import PathVisualizationWidget
 from napari_utils.visualization_module import PathVisualizationWidget
 from napari_utils.anisotropic_scaling import AnisotropicScaler
@@ -97,8 +96,8 @@ class NeuroSAMWidget(QWidget):
             self.viewer, self.current_image, self.state, self.scaler, self._on_scaling_update
         )
         self.segmentation_widget = SegmentationWidget(self.viewer, self.current_image, self.state)
-        self.spine_detection_widget = SpineDetectionWidget(self.viewer, self.current_image, self.state)
-        self.spine_segmentation_widget = SpineSegmentationWidget(self.viewer, self.current_image, self.state)
+        # New Prob U-Net Widget
+        self.punet_widget = PunetSpineSegmentationWidget(self.viewer, self.current_image, self.state)
         self.path_visualization_widget = PathVisualizationWidget(self.viewer, self.current_image, self.state)
         
         # Setup UI
@@ -107,9 +106,8 @@ class NeuroSAMWidget(QWidget):
         # Add modules to tabs
         self.tabs.addTab(self.path_tracing_widget, "Path Tracing")
         self.tabs.addTab(self.path_visualization_widget, "Path Management")
-        self.tabs.addTab(self.segmentation_widget, "Segmentation")
-        self.tabs.addTab(self.spine_detection_widget, "Spine Detection")
-        self.tabs.addTab(self.spine_segmentation_widget, "Spine Segmentation")
+        self.tabs.addTab(self.segmentation_widget, "Dendrite Segmentation")
+        self.tabs.addTab(self.punet_widget, "Spine Segmentation (Prob U-Net)")
         
         # Connect signals between modules
         self._connect_signals()
@@ -510,10 +508,10 @@ class NeuroSAMWidget(QWidget):
         """Update all modules with the new scaled image"""
         try:
             # Update each module's image reference
+            # Update each module's image reference
             self.path_tracing_widget.image = self.current_image
             self.segmentation_widget.image = self.current_image
-            self.spine_detection_widget.image = self.current_image
-            self.spine_segmentation_widget.image = self.current_image
+            self.punet_widget.image = self.current_image
             self.path_visualization_widget.image = self.current_image
             
             # Update spacing information in modules that use it
@@ -523,15 +521,10 @@ class NeuroSAMWidget(QWidget):
             min_spacing = min(current_spacing)
             if hasattr(self.segmentation_widget, 'update_pixel_spacing'):
                 self.segmentation_widget.update_pixel_spacing(min_spacing)
-            if hasattr(self.spine_detection_widget, 'update_pixel_spacing'):
-                self.spine_detection_widget.update_pixel_spacing(min_spacing)
-            if hasattr(self.spine_segmentation_widget, 'update_pixel_spacing'):
-                self.spine_segmentation_widget.update_pixel_spacing(min_spacing)
             
             # Update path lists in all modules
             self.segmentation_widget.update_path_list()
-            self.spine_detection_widget.update_path_list()
-            self.spine_segmentation_widget.update_path_list()
+            self.path_visualization_widget.update_path_list()
             self.path_visualization_widget.update_path_list()
             
         except Exception as e:
@@ -549,12 +542,7 @@ class NeuroSAMWidget(QWidget):
         
         # Connect segmentation signals
         self.segmentation_widget.segmentation_completed.connect(self.on_segmentation_completed)
-        
-        # Connect spine detection signals
-        self.spine_detection_widget.spines_detected.connect(self.on_spines_detected)
-        
-        # Connect spine segmentation signals
-        self.spine_segmentation_widget.spine_segmentation_completed.connect(self.on_spine_segmentation_completed)
+
     
     def on_path_created(self, path_id, path_name, path_data):
         """Handle when a new path is created (including connected paths)"""
@@ -597,8 +585,6 @@ class NeuroSAMWidget(QWidget):
         # Update all modules with the new path
         self.path_visualization_widget.update_path_list()
         self.segmentation_widget.update_path_list()
-        self.spine_detection_widget.update_path_list()
-        self.spine_segmentation_widget.update_path_list()
         
         # Success notification
         if is_connected:
@@ -693,8 +679,6 @@ class NeuroSAMWidget(QWidget):
         
         # Update all modules after path deletion
         self.segmentation_widget.update_path_list()
-        self.spine_detection_widget.update_path_list()
-        self.spine_segmentation_widget.update_path_list()
     
     def on_segmentation_completed(self, path_id, layer_name):
         """Handle when segmentation is completed for a path"""
@@ -713,82 +697,9 @@ class NeuroSAMWidget(QWidget):
         
         self.path_info.setText(" ".join(status_parts))
         
-        # Enable spine detection for this path
-        self.spine_detection_widget.enable_for_path(path_id)
+
     
-    def on_spines_detected(self, path_id, spine_positions):
-        """Handle when spines are detected for a path"""
-        path_data = self.state['paths'][path_id]
-        spacing = self.scaler.get_effective_spacing()
-        
-        # Store spine coordinates in original space for future reference
-        if path_id in self.state['spine_data']:
-            original_spine_coords = self.scaler.unscale_coordinates(spine_positions)
-            self.state['spine_data'][path_id]['coordinates_original_space'] = original_spine_coords
-            self.state['spine_data'][path_id]['detection_spacing'] = spacing
-        
-        # Build comprehensive status message
-        status_parts = [f"Detected {len(spine_positions)} spines for {path_data['name']}"]
-        
-        # Add processing method info
-        if 'spine_data' in self.state and path_id in self.state['spine_data']:
-            spine_info = self.state['spine_data'][path_id]
-            if spine_info.get('detection_method') == 'memory_optimized_angle_based_extended':
-                if spine_info.get('parameters', {}).get('enable_parallel', False):
-                    status_parts.append("(optimized, parallel)")
-                else:
-                    status_parts.append("(optimized)")
-        
-        # Add path algorithm info
-        if path_data.get('algorithm') == 'waypoint_astar':
-            status_parts.append("(waypoint_astar path)")
-        elif path_data.get('smoothed', False):
-            status_parts.append("(smoothed path)")
-        
-        # Add spacing info
-        status_parts.append(f"at {spacing[0]:.1f}, {spacing[1]:.1f}, {spacing[2]:.1f} nm")
-        
-        self.path_info.setText(" ".join(status_parts))
-        
-        # Store spine positions in state
-        self.state['spine_positions'] = spine_positions
-        
-        # Enable spine segmentation for this path
-        self.spine_segmentation_widget.enable_for_path(path_id)
-    
-    def on_spine_segmentation_completed(self, path_id, layer_name):
-        """Handle when spine segmentation is completed for a path"""
-        path_data = self.state['paths'][path_id]
-        spacing = self.scaler.get_effective_spacing()
-        
-        # Build comprehensive completion message
-        status_parts = [f"Spine segmentation completed for {path_data['name']}"]
-        
-        # Add algorithm details
-        algorithm_details = []
-        if path_data.get('algorithm') == 'waypoint_astar':
-            algorithm_details.append("path tracing")
-        
-        if 'spine_data' in self.state and path_id in self.state['spine_data']:
-            spine_info = self.state['spine_data'][path_id]
-            if spine_info.get('detection_method') == 'memory_optimized_angle_based_extended':
-                algorithm_details.append("spine detection")
-        
-        if algorithm_details:
-            status_parts.append(f"({', '.join(algorithm_details)})")
-        
-        # Add spacing info
-        status_parts.append(f"at {spacing[0]:.1f}, {spacing[1]:.1f}, {spacing[2]:.1f} nm")
-        
-        self.path_info.setText(" ".join(status_parts))
-        
-        # Create comprehensive completion notification
-        notification_parts = [f"Complete workflow finished for {path_data['name']}"]
-        if algorithm_details:
-            notification_parts.append(f"using {', '.join(algorithm_details)}")
-        notification_parts.append(f"at current scaling")
-        
-        napari.utils.notifications.show_info(" ".join(notification_parts))
+
     
     def get_current_image(self):
         """Get the currently scaled image"""
