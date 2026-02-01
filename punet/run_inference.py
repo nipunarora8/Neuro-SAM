@@ -54,102 +54,6 @@ def infer_slice(model, device, img_2d: np.ndarray, mc_samples: int = 8):
     return pd_np.astype(np.float32), ps_np.astype(np.float32)
 
 
-def run_inference_volume(
-    image_input: np.ndarray,
-    weights_path: str,
-    device: str = "cpu",
-    samples: int = 24,
-    posterior: bool = False,
-    temperature: float = 1.4,
-    threshold: float = 0.5,
-    min_size_voxels: int = 40,
-    verbose: bool = True,
-    progress_callback=None
-):
-    """
-    Library function for Napari widget.
-    image_input: 3D numpy array (Z, H, W)
-    """
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
-    print(f"Device: {device}")
-    
-    # Load model
-    model = ProbabilisticUnetDualLatent(
-        input_channels=1,
-        num_classes=1,
-        num_filters=[32, 64, 128, 192],
-        latent_dim_dendrite=12,
-        latent_dim_spine=12,
-        no_convs_fcomb=4,
-        recon_loss="tversky",        
-        tversky_alpha=0.3, tversky_beta=0.7, tversky_gamma=1.0,
-        beta_dendrite=1.0, beta_spine=1.0,
-        loss_weight_dendrite=1.0, loss_weight_spine=1.0,
-    ).to(device)
-    model.eval()
-
-    if verbose: print(f"Loading checkpoint: {weights_path}")
-    ckpt = torch.load(weights_path, map_location=device, weights_only=False)
-    state = ckpt.get("model_state_dict", ckpt) 
-    model.load_state_dict(state, strict=True)
-
-    vol = image_input
-    if vol.ndim == 2:
-        vol = vol[np.newaxis, ...]
-    Z, H, W = vol.shape
-
-    prob_d = np.zeros((Z, H, W), dtype=np.float32)
-    prob_s = np.zeros((Z, H, W), dtype=np.float32)
-
-    iterator = range(Z)
-    if verbose:
-        iterator = tqdm(iterator, desc="Inferring")
-
-    for z in iterator:
-        img = vol[z].astype(np.float32)
-        # per-slice min-max normalize
-        vmin, vmax = float(img.min()), float(img.max())
-        if vmax > vmin:
-            img = (img - vmin) / (vmax - vmin)
-        else:
-            img = np.zeros_like(img, dtype=np.float32)
-            
-        pd, ps = infer_slice(model, device, img, mc_samples=samples)
-        prob_d[z] = pd
-        prob_s[z] = ps
-        
-        if progress_callback:
-            progress_callback((z + 1) / Z)
-
-    # Post-processing masks
-    mask_d = (prob_d >= threshold).astype(np.uint8)
-    mask_s = (prob_s >= threshold).astype(np.uint8)
-    
-    # Filter small objects helper
-    def filter_small(mask, min_sz):
-        from scipy.ndimage import label as cc_label
-        lbl, num = cc_label(mask)
-        if num == 0: return mask
-        sizes = np.bincount(lbl.ravel())[1:]
-        keep = np.where(sizes >= min_sz)[0] + 1
-        return np.isin(lbl, keep).astype(np.uint8)
-
-    mask_d = filter_small(mask_d, min_size_voxels)
-    mask_s = filter_small(mask_s, min_size_voxels)
-
-    return {
-        'prob_dendrite': prob_d,
-        'prob_spine': prob_s,
-        'mask_dendrite': mask_d,
-        'mask_spine': mask_s
-    }
-
-
 def main():
     ap = argparse.ArgumentParser(description="Inference on DeepD3_Benchmark.tif with Dual-Latent Prob-UNet")
     ap.add_argument("--weights", required=True, help="Path to checkpoint .pth (with model_state_dict)")
@@ -164,7 +68,12 @@ def main():
     outdir = Path(args.out)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
     print(f"Device: {device}")
 
     model = ProbabilisticUnetDualLatent(
@@ -183,7 +92,7 @@ def main():
 
     # Load checkpoint
     print(f"Loading checkpoint: {args.weights}")
-    ckpt = torch.load(args.weights, map_location=device)
+    ckpt = torch.load(args.weights, map_location=device, weights_only=False)
     state = ckpt.get("model_state_dict", ckpt) 
     model.load_state_dict(state, strict=True)
 

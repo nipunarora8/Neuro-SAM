@@ -685,6 +685,9 @@ class NeuroSAMWidget(QWidget):
         path_data = self.state['paths'][path_id]
         spacing = self.scaler.get_effective_spacing()
         
+        # Trigger spine layer refresh in Punet widget
+        self.punet_widget.refresh_spine_layers()
+        
         # Build comprehensive status message
         status_parts = [f"Segmentation completed for {path_data['name']}"]
         

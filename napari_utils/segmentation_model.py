@@ -46,7 +46,7 @@ class DendriteSegmenter:
                 return False
             
             # Use bfloat16 for memory efficiency
-            torch.autocast(device_type="cpu", dtype=torch.bfloat16).__enter__()
+            torch.autocast(device_type=self.device, dtype=torch.bfloat16).__enter__()
 
             # Build model and load weights
             print("Building SAM2 model...")

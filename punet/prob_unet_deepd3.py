@@ -237,6 +237,8 @@ class Fcomb(nn.Module):
         order_index = torch.LongTensor(
             np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])
         ).to(device)
+        if a.device.type == 'mps':
+            return torch.index_select(a.cpu(), dim, order_index.cpu()).to(a.device)
         return torch.index_select(a, dim, order_index)
 
     def forward(self, feature_map, z):

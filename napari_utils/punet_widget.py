@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import tifffile as tiff
 from qtpy.QtWidgets import (
-    QWidget, QVBoxLayout, QPushButton, QLabel, QSpinBox, 
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSpinBox, 
     QDoubleSpinBox, QFileDialog, QProgressBar, QGroupBox, QFormLayout
 )
 from qtpy.QtCore import Qt, QThread, Signal
@@ -74,7 +74,7 @@ class PunetSpineSegmentationWidget(QWidget):
         
         self.spin_samples = QSpinBox()
         self.spin_samples.setRange(1, 100)
-        self.spin_samples.setValue(24)
+        self.spin_samples.setValue(8)
         self.spin_samples.setToolTip("Number of Monte Carlo samples per slice")
         form_layout.addRow("MC Samples:", self.spin_samples)
         
@@ -107,6 +107,22 @@ class PunetSpineSegmentationWidget(QWidget):
         self.btn_run.setStyleSheet("font-weight: bold; font-size: 12px;")
         self.btn_run.clicked.connect(self._run_segmentation)
         layout.addWidget(self.btn_run)
+        
+        # New Buttons Layout
+        btn_layout = QHBoxLayout()
+        
+        self.btn_toggle_view = QPushButton("Show Full Stack")
+        self.btn_toggle_view.setCheckable(True)
+        self.btn_toggle_view.clicked.connect(self.toggle_view)
+        self.btn_toggle_view.setEnabled(False) # Disabled until inference runs
+        btn_layout.addWidget(self.btn_toggle_view)
+        
+        self.btn_export = QPushButton("Export Spines")
+        self.btn_export.clicked.connect(self.export_spines)
+        self.btn_export.setEnabled(False) # Disabled until inference runs
+        btn_layout.addWidget(self.btn_export)
+        
+        layout.addLayout(btn_layout)
         
         self.progress = QProgressBar()
         self.progress.setVisible(False)
@@ -235,29 +251,171 @@ class PunetSpineSegmentationWidget(QWidget):
         self.btn_run.setEnabled(True)
         self.progress.setVisible(False)
         self.status_label.setText("Finished.")
+        self.full_spine_mask = results['mask_spine'] # Store global mask
         
-        # Display only Spine Segmentation Mask as requested
-        # Use add_image with custom colormap (transparent -> green)
-        # mask = results['mask_spine'].astype(np.float32)
-        # mask[mask > 0.5] = 1.0
+        # Enable new buttons
+        self.btn_toggle_view.setEnabled(True)
+        self.btn_export.setEnabled(True)
+        self.btn_toggle_view.setChecked(False) # Default to local view
+        self.btn_toggle_view.setText("Show Full Stack")
+        self.showing_full_stack = False
         
-        layer = self.viewer.add_image(
-            results['mask_spine'],
-            name="Spine Segmentation (Prob U-Net)",
-            opacity=0.8,
-            blending='additive',
-            colormap='viridis' # Will be overridden
+        # Refresh layers based on existing dendrite segmentations
+        self.refresh_spine_layers()
+        
+        napari.utils.notifications.show_info("Spine Segmentation Complete. Updating per-path layers.")
+
+    def toggle_view(self):
+        if not hasattr(self, 'full_spine_mask') or self.full_spine_mask is None:
+            return
+            
+        if self.btn_toggle_view.isChecked():
+            # Switch to Global View
+            self.btn_toggle_view.setText("Show Filtered")
+            self.showing_full_stack = True
+            
+            # 1. Remove all local path layers
+            layers_to_remove = []
+            for layer in self.viewer.layers:
+                if layer.name.startswith("Spine Segmentation - Path"):
+                    layers_to_remove.append(layer)
+            for layer in layers_to_remove:
+                self.viewer.layers.remove(layer)
+                
+            # 2. Add Global Layer
+            display_mask = self.full_spine_mask.astype(np.float32)
+            display_mask[display_mask > 0] = 1.0
+            
+            layer = self.viewer.add_image(
+                display_mask,
+                name="Global Spine Segmentation",
+                opacity=0.8,
+                blending='additive',
+                colormap='viridis'
+            )
+            # Custom colormap: 0=Transparent, 1=Neon Green
+            custom_cmap = np.array([[0, 0, 0, 0], [0.1, 1.0, 0.1, 1.0]])
+            layer.colormap = custom_cmap
+            layer.contrast_limits = [0, 1]
+            
+        else:
+            # Switch to Local View
+            self.btn_toggle_view.setText("Show Full Stack")
+            self.showing_full_stack = False
+            
+            # 1. Remove Global Layer
+            for layer in self.viewer.layers:
+                if layer.name == "Global Spine Segmentation":
+                    self.viewer.layers.remove(layer)
+                    break
+            
+            # 2. Restore Local Layers
+            self.refresh_spine_layers()
+
+    def export_spines(self):
+        if not hasattr(self, 'full_spine_mask') or self.full_spine_mask is None:
+            napari.utils.notifications.show_error("No spines to export!")
+            return
+            
+        import tifffile
+        from qtpy.QtWidgets import QFileDialog
+        
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Spine Segmentation", "spine_segmentation.tif", 
+            "TIFF Files (*.tif *.tiff);;All Files (*)", options=options
         )
         
-        # Custom colormap: 0=Transparent, 1=Green
-        custom_cmap = np.array([
-            [0, 0, 0, 0],
-            [0, 1, 0, 1]
-        ])
-        layer.colormap = custom_cmap
-        layer.contrast_limits = [0, 1]
+        if file_path:
+            try:
+                tifffile.imwrite(file_path, self.full_spine_mask)
+                napari.utils.notifications.show_info(f"Saved spine segmentation to {file_path}")
+            except Exception as e:
+                napari.utils.notifications.show_error(f"Failed to save file: {e}")
+
+    def refresh_spine_layers(self):
+        """
+        Filter global spine mask by dendrite segments and show/update layers
+        for each path that has a dendrite mask.
+        """
+        if not hasattr(self, 'full_spine_mask') or self.full_spine_mask is None:
+            return
+            
+        # If we are in "Full Stack" mode, logic is paused/ignored until user switches back
+        if hasattr(self, 'showing_full_stack') and self.showing_full_stack:
+            return
+
+        from scipy.ndimage import distance_transform_edt
         
-        napari.utils.notifications.show_info("Spine Segmentation Complete.")
+        # We need to find dendrite masks for each path
+        for path_id, path_data in self.state['paths'].items():
+            path_name = path_data['name']
+            seg_layer_name = f"Segmentation - {path_name}"
+            
+            # Find the dendrite layer
+            dendrite_layer = None
+            for layer in self.viewer.layers:
+                if layer.name == seg_layer_name:
+                    dendrite_layer = layer
+                    break
+            
+            if dendrite_layer is None:
+                continue # No dendrite segmentation for this path yet
+                
+            # Get dendrite mask (it might be float if added with add_image, usually 0 or 1)
+            dendrite_data = dendrite_layer.data
+            binary_dendrite = (dendrite_data > 0)
+            
+            # Use Distance Transform to create a broad "capture zone" around the dendrite
+            # distance_transform_edt calculates distance to the nearest ZERO value.
+            # So we invert the mask: Dendrite=0, Background=1.
+            # Result: Distance from nearest dendrite pixel.
+            dist_map = distance_transform_edt(np.logical_not(binary_dendrite))
+            
+            # Capture radius in pixels. 25 pixels ~ 2.5 microns (at 0.1um/px)
+            # This is large enough to capture even long spines.
+            capture_radius = 25 
+            capture_mask = (dist_map <= capture_radius)
+            
+            # Mask the global spine prediction with this broad capture zone
+            filtered_spine = self.full_spine_mask & capture_mask
+            
+            # Prepare for display (float for add_image with alpha)
+            display_mask = filtered_spine.astype(np.float32)
+            display_mask[display_mask > 0] = 1.0
+            
+            spine_layer_name = f"Spine Segmentation - {path_name}"
+            
+            # Remove existing spine layer if present
+            existing_spine_layer = None
+            for layer in self.viewer.layers:
+                if layer.name == spine_layer_name:
+                    existing_spine_layer = layer
+                    break
+            
+            if existing_spine_layer:
+                self.viewer.layers.remove(existing_spine_layer)
+                
+            # Display
+            if np.any(display_mask):
+                layer = self.viewer.add_image(
+                    display_mask,
+                    name=spine_layer_name,
+                    opacity=0.8,
+                    blending='additive',
+                    colormap='viridis' # Dummy, overridden below
+                )
+                
+                # Green spines (transparent background)
+                color = np.array([0, 1, 0, 1])
+                # Inherit or pick color? User requested neon green in prev logic
+                
+                custom_cmap = np.array([
+                    [0, 0, 0, 0],   # Transparent
+                    color           # Green
+                ])
+                layer.colormap = custom_cmap
+                layer.contrast_limits = [0, 1]
 
     def _on_worker_error(self, err):
         self.btn_run.setEnabled(True)

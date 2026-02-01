@@ -340,6 +340,14 @@ class SegmentationWidget(QWidget):
             # Update status
             self.status_label.setText("Status: Loading dendrite segmentation model...")
             self.load_model_btn.setEnabled(False)
+
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif torch.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
+            print(f"Device: {device}")
             
             # Initialize segmenter if not already done
             if self.segmenter is None:
@@ -347,7 +355,7 @@ class SegmentationWidget(QWidget):
                     model_path="./Train-SAMv2/checkpoints/sam2.1_hiera_small.pt",
                     config_path="sam2.1_hiera_s.yaml",
                     weights_path="./Train-SAMv2/results/samv2_dendrite/dendrite_model.torch",
-                    device="cuda" if torch.cuda.is_available() else "cpu"
+                    device=device
                 )
             
             # Load the model

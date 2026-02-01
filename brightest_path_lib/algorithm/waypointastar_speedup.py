@@ -38,30 +38,89 @@ def calculate_segment_distance_accurate_pixels(point_a_arr, point_b_arr):
 
 # Z-range detection functions ported from enhanced_waypointastar.py
 @nb.njit(cache=True, parallel=True)
-def find_intensity_transitions_at_point_optimized(image, y, x, intensity_threshold=0.3):
-    """Find z-frames where intensity transitions occur (appearance/disappearance) - OPTIMIZED"""
+def find_intensity_transitions_at_point_optimized(image, y, x, intensity_threshold=0.3, z_click=-1):
+    """
+    Find z-frames where intensity transitions occur.
+    If z_click is provided, finds the intensity interval closest to that z-plane.
+    This handles overlapping dendrites by picking the relevant structure.
+    """
     z_size = image.shape[0]
     intensities = np.zeros(z_size)
     
-    # Extract intensity profile along z-axis with parallel processing
+    # Extract intensity profile along z-axis
     for z in nb.prange(z_size):
         intensities[z] = image[z, y, x]
     
-    # Find peak intensity and threshold
+    # Find peak intensity locally or globally? 
+    # Global max is safer to set threshold, even if we pick a smaller local peak later.
     max_intensity = np.max(intensities)
     threshold = max_intensity * intensity_threshold
     
     # Vectorized transition detection
     above_threshold = intensities >= threshold
     
-    # Find first frame above threshold (appearance)
+    # If using z_click, find the specific interval containing or closest to z_click
+    if z_click != -1:
+        # Find all intervals
+        intervals_start = []
+        intervals_end = []
+        
+        in_interval = False
+        current_start = -1
+        last_valid_z = -1
+        gap_tolerance = 2
+        
+        for z in range(z_size):
+            if above_threshold[z]:
+                if not in_interval:
+                    # Check if this new start is close enough to merge with previous interval?
+                    # Actually, simple state machine is better:
+                    in_interval = True
+                    current_start = z
+                last_valid_z = z
+            else:
+                if in_interval:
+                    # Check if we should close the interval
+                    if z - last_valid_z > gap_tolerance:
+                        in_interval = False
+                        intervals_start.append(current_start)
+                        intervals_end.append(last_valid_z) # End at the last valid pixel
+        
+        # Handle case where interval extends to the end or was kept open by tolerance
+        if in_interval:
+            intervals_start.append(current_start)
+            intervals_end.append(last_valid_z)
+            
+        if len(intervals_start) > 0:
+            # Find closest interval to z_click
+            best_idx = 0
+            min_dist = 100000
+            
+            for i in range(len(intervals_start)):
+                s = intervals_start[i]
+                e = intervals_end[i]
+                
+                # Distance logic:
+                # If z_click is inside [s, e], dist is 0.
+                # Else dist is min(|z_click - s|, |z_click - e|)
+                if s <= z_click <= e:
+                    dist = 0
+                else:
+                    dist = min(abs(z_click - s), abs(z_click - e))
+                
+                if dist < min_dist:
+                    min_dist = dist
+                    best_idx = i
+            
+            return intervals_start[best_idx], intervals_end[best_idx], max_intensity
+            
+    # Fallback / Default: Find global start/end
     start_z = -1
     for z in range(z_size):
         if above_threshold[z]:
             start_z = z
             break
     
-    # Find last frame above threshold (disappearance)
     end_z = -1
     for z in range(z_size - 1, -1, -1):
         if above_threshold[z]:
@@ -107,13 +166,30 @@ def batch_find_optimal_z_with_intensity_priority(image, waypoint_coords, start_z
                 candidate_intensities.append(intensity)
         
         if len(candidate_positions) == 0:
-            # If no bright pixels found, find the brightest pixel in the range
+            # If no bright pixels found, find the best pixel in the range with distance penalty
             best_z = z_min_range
-            best_intensity = 0.0
+            best_score = -1000.0
+            
+            # Use target position for distance penalty
+            if num_waypoints == 1:
+                target_z = (start_z + end_z) // 2
+            else:
+                if end_z > start_z:
+                    step = (end_z - start_z) / (num_waypoints + 1)
+                    target_z = int(start_z + (i + 1) * step)
+                elif start_z > end_z:
+                    step = (start_z - end_z) / (num_waypoints + 1)
+                    target_z = int(start_z - (i + 1) * step)
+                else:
+                    target_z = start_z
+
             for z in range(max(0, z_min_range), min(image.shape[0], z_max_range + 1)):
                 intensity = image[z, y, x]
-                if intensity > best_intensity:
-                    best_intensity = intensity
+                # Heavy penalty to prevent jumping across the stack
+                distance_penalty = abs(z - target_z) * 0.1
+                score = intensity - distance_penalty
+                if score > best_score:
+                    best_score = score
                     best_z = z
             optimal_z_values[i] = best_z
         else:
@@ -237,18 +313,23 @@ def batch_find_optimal_z_with_adaptive_search(image, waypoint_coords, start_z, e
             if found_good_position and image[best_z, y, x] >= min_intensity_threshold:
                 break
         
-        # If still no good position found, just use the brightest pixel in the full range
+        # If still no good position found, use full range but with heavy distance penalty
         if not found_good_position:
             z_min_full = max(0, min(start_z, end_z))
             z_max_full = min(image.shape[0] - 1, max(start_z, end_z))
             
             best_z = target_z
-            best_intensity = 0.0
+            best_score = -1000.0
             
             for z in range(z_min_full, z_max_full + 1):
                 intensity = image[z, y, x]
-                if intensity > best_intensity:
-                    best_intensity = intensity
+                # Heavy distance penalty to keep it close to target interpolation
+                # 0.1 means 10 slices away = -1.0 score penalty
+                distance_penalty = abs(z - target_z) * 0.1
+                score = intensity - distance_penalty
+                
+                if score > best_score:
+                    best_score = score
                     best_z = z
             
             optimal_z_values[i] = best_z
@@ -356,10 +437,11 @@ class ZRangeCache:
     def __init__(self):
         self.cache = {}
     
-    def get_z_range(self, image, y, x, intensity_threshold):
-        key = (y, x, intensity_threshold)
+    def get_z_range(self, image, y, x, intensity_threshold, z_click=-1):
+        # Include z_click in cache key if provided, as it affects the result
+        key = (y, x, intensity_threshold, z_click)
         if key not in self.cache:
-            self.cache[key] = find_intensity_transitions_at_point_optimized(image, y, x, intensity_threshold)
+            self.cache[key] = find_intensity_transitions_at_point_optimized(image, y, x, intensity_threshold, z_click)
         return self.cache[key]
 
 
@@ -493,7 +575,7 @@ class FasterWaypointSearch:
             print(f"Spacing: XY={self.xy_spacing_nm:.1f} nm/pixel")
             print(f"Z-range optimization: {self.enable_z_optimization}")
             print("NO SUBDIVISION - Pure waypoint-to-waypoint processing with Z-optimization")
-    
+
     def _process_points_list_optimized(self, points_list):
         """Process a list of points to extract start, end, and waypoints with intelligent Z-positioning"""
         if len(points_list) < 2:
@@ -512,11 +594,14 @@ class FasterWaypointSearch:
         # Apply z-range detection if enabled
         if self.enable_z_optimization and len(self.image.shape) == 3:
             # Find optimal z-ranges for start and end points using transition detection
+            # Pass the user's Z-click to disambiguate overlapping dendrites
+            start_z_click = int(start_coords[0])
             start_z_min, start_z_max, start_max_intensity = self.z_range_cache.get_z_range(
-                self.image, int(start_coords[1]), int(start_coords[2]), self.intensity_threshold)
+                self.image, int(start_coords[1]), int(start_coords[2]), self.intensity_threshold, start_z_click)
             
+            end_z_click = int(end_coords[0])
             end_z_min, end_z_max, end_max_intensity = self.z_range_cache.get_z_range(
-                self.image, int(end_coords[1]), int(end_coords[2]), self.intensity_threshold)
+                self.image, int(end_coords[1]), int(end_coords[2]), self.intensity_threshold, end_z_click)
             
             if self.verbose:
                 print(f"Start point transition frames: appears at {start_z_min}, disappears at {start_z_max} (max intensity: {start_max_intensity:.3f})")
