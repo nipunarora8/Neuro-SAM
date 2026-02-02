@@ -94,13 +94,19 @@ git clone https://github.com/nipunarora8/Neuro-SAM.git
 cd Neuro-SAM
 ```
 
-2. **Create conda environment:**
+2. **Create local environment:**
 ```bash
-conda env create -f environment.yml
-conda activate sam2
+conda create -p ./.venv python=3.10 -c conda-forge
+conda activate ./.venv
 ```
 
-3. **Download SAM2 checkpoints:**
+3. **Install dependencies:**
+```bash
+pip install uv
+uv sync
+```
+
+4. **Download SAM2 checkpoints:**
 ```bash
 cd Train-SAMv2/checkpoints
 bash download_ckpts.sh

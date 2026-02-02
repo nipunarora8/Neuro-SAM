@@ -86,8 +86,20 @@ class PathSmoother:
                     simplified_points.append(scaled_points[i])
                     last_kept_idx = i
             
-            # Always add the last point
-            simplified_points.append(scaled_points[-1])
+            # Handling the final point
+            # If the last kept point is too close to the end point, we replace it with the end point
+            # This prevents "dancing" or jitter at the end where two points are very close
+            last_added = simplified_points[-1]
+            end_point = scaled_points[-1]
+            diff = end_point - last_added
+            dist_sq = np.sum(diff**2)
+            
+            if dist_sq < min_dist_sq and len(simplified_points) > 1:
+                # Replace the last added intermediate point with the true end point
+                simplified_points[-1] = end_point
+            else:
+                # Otherwise append as usual
+                simplified_points.append(end_point)
             simplified_points = np.array(simplified_points)
             
             # Prepare coordinates for spline fitting

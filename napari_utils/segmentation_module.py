@@ -204,10 +204,10 @@ class SegmentationWidget(QWidget):
         # params_layout.addWidget(self.use_full_volume_cb)
         
         # Processing method info
-        method_info = QLabel("Method: 50% overlapping patches + optional light cleanup")
-        method_info.setWordWrap(True)
-        method_info.setStyleSheet("color: #0066cc; font-style: italic;")
-        params_layout.addWidget(method_info)
+        # method_info = QLabel("Method: 50% overlapping patches + optional light cleanup")
+        # method_info.setWordWrap(True)
+        # method_info.setStyleSheet("color: #0066cc; font-style: italic;")
+        # params_layout.addWidget(method_info)
         
         params_section.setLayout(params_layout)
         layout.addWidget(params_section)
