@@ -12,8 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import kl
-from deepd3_model import DeepD3Model
-from prob_unet_deepd3 import AxisAlignedConvGaussian, Fcomb
+from .deepd3_model import DeepD3Model
+from .prob_unet_deepd3 import AxisAlignedConvGaussian, Fcomb
 
 
 class TverskyLoss(nn.Module):

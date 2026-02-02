@@ -971,9 +971,12 @@ class NeuroSAMWidget(QWidget):
                 layer = self.viewer.add_image(
                     final_stack, 
                     name=layer_name, 
-                    colormap='gray',
-                    interpolation='nearest'
+                    colormap='gray'
                 )
+                
+                # Set interpolation
+                layer.interpolation2d = 'nearest'
+                layer.interpolation3d = 'nearest'
                 
                 # Force 2D view
                 self.viewer.dims.ndisplay = 2

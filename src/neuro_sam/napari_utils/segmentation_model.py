@@ -8,22 +8,33 @@ from scipy.ndimage import label
 from matplotlib.path import Path
 
 
+from neuro_sam.utils import get_weights_path
+
 class DendriteSegmenter:
     """Class for segmenting dendrites from 3D image volumes using SAM2 with overlapping patches"""
     
-    def __init__(self, model_path="./Train-SAMv2/checkpoints/sam2.1_hiera_small.pt", config_path="sam2.1_hiera_s.yaml", weights_path="./Train-SAMv2/results/samv2_dendrite/dendrite_model.torch", device="cuda"):
+    def __init__(self, model_path=None, config_path="sam2.1_hiera_s.yaml", weights_path=None, device="cuda"):
         """
         Initialize the dendrite segmenter with overlapping patches.
         
         Args:
-            model_path: Path to SAM2 model checkpoint
+            model_path: Path to SAM2 model checkpoint (auto-downloaded if None)
             config_path: Path to model configuration
-            weights_path: Path to trained weights
+            weights_path: Path to trained weights (auto-downloaded if None)
             device: Device to run the model on (cpu or cuda)
         """
-        self.model_path = model_path
+        if model_path is None:
+            self.model_path = get_weights_path("sam2.1_hiera_small.pt")
+        else:
+            self.model_path = model_path
+            
         self.config_path = config_path
-        self.weights_path = weights_path
+        
+        if weights_path is None:
+            self.weights_path = get_weights_path("dendrite_model.torch")
+        else:
+            self.weights_path = weights_path
+            
         self.device = device
         self.predictor = None
 
@@ -35,8 +46,6 @@ class DendriteSegmenter:
             
             # Try importing first to catch import errors
             try:
-                import sys
-                sys.path.append('./Train-SAMv2')
                 from sam2.build_sam import build_sam2
                 from sam2.sam2_image_predictor import SAM2ImagePredictor
                 print("Successfully imported SAM2 modules")

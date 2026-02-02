@@ -7,7 +7,7 @@ import torch
 import tifffile as tiff
 from tqdm import tqdm
 
-from prob_unet_with_tversky import ProbabilisticUnetDualLatent
+from .prob_unet_with_tversky import ProbabilisticUnetDualLatent
 
 
 def pad_to_multiple(img: np.ndarray, multiple: int = 32):

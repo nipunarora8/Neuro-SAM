@@ -216,8 +216,7 @@ def load_ome_tiff_with_spacing(image_path):
     return image, (94.0, 94.0, 500.0)
 
 
-# For direct execution from command line
-if __name__ == "__main__":
+def main():
     import sys
     import argparse
     
@@ -248,13 +247,19 @@ if __name__ == "__main__":
     else:
         # Try to load a default benchmark image
         try:
-            default_path = './DeepD3_Benchmark.tif'
-            print(f"No image path provided, trying to load default: {default_path}")
+            from neuro_sam.utils import get_weights_path
+            default_path = get_weights_path('DeepD3_Benchmark.tif')
+            print(f"No image path provided, loading default: {default_path}")
             spacing_xyz = (args.x_spacing, args.y_spacing, args.z_spacing)
             viewer = run_neuro_sam(image_path=default_path, spacing_xyz=spacing_xyz)
-        except FileNotFoundError:
+        except Exception as e:
+            print(f"Failed to load default image: {e}")
             sys.exit(1)
     
     print("\nStarted NeuroSAM with anisotropic scaling support!")
     print("Configure voxel spacing in the 'Path Tracing' tab before starting analysis.")
     napari.run()  # Start the Napari event loop
+
+# For direct execution from command line
+if __name__ == "__main__":
+    main()

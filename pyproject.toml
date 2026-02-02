@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuro-sam"
-version = "0.1.0"
+version = "0.1.13"
 description = "Neuro-SAM: Foundation Models for Dendrite and Dendritic Spine Segmentation"
 readme = "README.md"
 authors = [
-  { name = "Nipun Arora", email = "nipun.arora@fau.de" },
+  { name = "Nipun Arora", email = "nipunarora8@yahoo.com" },
 ]
 license = { file = "LICENSE" }
 classifiers = [
@@ -33,7 +33,16 @@ dependencies = [
     "superqt",
     "magicgui",
     "scikit-image",
-    "tifffile"
+    "tifffile",
+    "numba",
+    "PyQt5",
+    "opencv-python-headless",
+    "matplotlib",
+    "requests",
+    "flammkuchen",
+    "albumentations",
+    "wandb",
+    "tensorflow"
 ]
 requires-python = ">=3.10"
 
@@ -48,6 +57,11 @@ include = ["neuro_sam*", "sam2*"]
 [tool.setuptools.package-data]
 "sam2" = ["*.yaml", "configs/**/*.yaml"]
 "neuro_sam" = ["napari.yaml"]
+
+[project.scripts]
+neuro-sam = "neuro_sam.plugin:main"
+neuro-sam-download = "neuro_sam.utils:download_all_models"
+neuro-sam-train = "neuro_sam.training.train_dendrites:main"
 
 [project.entry-points."napari.manifest"]
 neuro-sam = "neuro_sam:napari.yaml"

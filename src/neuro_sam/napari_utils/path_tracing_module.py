@@ -509,10 +509,10 @@ class PathTracingWidget(QWidget):
             self.scaler.original_spacing_xyz[0] / x_nm   # X
         ])
         
-        self.scaling_status.setText(
-            f"Pending: X={x_nm:.1f}, Y={y_nm:.1f}, Z={z_nm:.1f} nm\n"
-            f"Scale factors (Z,Y,X): {temp_scale_factors[0]:.3f}, {temp_scale_factors[1]:.3f}, {temp_scale_factors[2]:.3f}"
-        )
+        # self.scaling_status.setText(
+        #     f"Pending: X={x_nm:.1f}, Y={y_nm:.1f}, Z={z_nm:.1f} nm\n"
+        #     f"Scale factors (Z,Y,X): {temp_scale_factors[0]:.3f}, {temp_scale_factors[1]:.3f}, {temp_scale_factors[2]:.3f}"
+        # )
         
     def _apply_scaling(self):
         """Apply current scaling settings"""

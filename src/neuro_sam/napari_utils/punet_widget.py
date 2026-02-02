@@ -15,17 +15,13 @@ import napari
 from napari.qt.threading import thread_worker
 
 # Import the model class
-# Assuming running from root, so punet is a package
-try:
-    from neuro_sam.punet.punet_inference import run_inference_volume
-except ImportError:
-    # Fallback if running from a different context, try to append path
-    import sys
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'punet'))
-    from neuro_sam.punet_inference import run_inference_volume
+# Assumes installed package structure
+from neuro_sam.punet.punet_inference import run_inference_volume
 
 
 
+
+from neuro_sam.utils import get_weights_path
 
 class PunetSpineSegmentationWidget(QWidget):
     """
@@ -42,7 +38,7 @@ class PunetSpineSegmentationWidget(QWidget):
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
-        self.model_path = "punet/punet_best.pth" # Default relative path
+        self.model_path = get_weights_path("punet_best.pth") # Auto-download default weights
         
         # Connect custom progress signal
         self.progress_signal.connect(self._on_worker_progress)
@@ -198,12 +194,12 @@ class PunetSpineSegmentationWidget(QWidget):
         import traceback
         try:
             # Import the refactored inference function from the package
+            # Import the refactored inference function from the package
             try:
                 from neuro_sam.punet.punet_inference import run_inference_volume
             except ImportError:
-                import sys
-                sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'punet'))
-                from neuro_sam.punet_inference import run_inference_volume
+                # Fallback should not be needed with proper package execution
+                raise ImportError("Could not import run_inference_volume from neuro_sam.punet.punet_inference")
             
             yield "Starting inference..."
             

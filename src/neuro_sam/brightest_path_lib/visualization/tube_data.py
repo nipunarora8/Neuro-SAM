@@ -7,13 +7,13 @@ from concurrent.futures import ThreadPoolExecutor
 from neuro_sam.brightest_path_lib.algorithm.waypointastar_speedup import quick_accurate_optimized_search
 
 # Numba-optimized core functions
-@nb.njit(cache=True, parallel=True)
+@nb.njit(cache=True)
 def compute_tangent_vectors_fast(path_array):
     """Fast computation of tangent vectors using numba"""
     n_points = path_array.shape[0]
     tangents = np.zeros_like(path_array, dtype=np.float64)
     
-    for i in nb.prange(n_points):
+    for i in range(n_points):
         if i == 0:
             if n_points > 1:
                 tangent = path_array[1] - path_array[0]
@@ -84,13 +84,13 @@ def create_orthogonal_basis_fast(forward):
 
     return up, right
 
-@nb.njit(cache=True, parallel=True)
+@nb.njit(cache=True)
 def sample_viewing_plane_fast(image, current_point, up, right, plane_size):
     """Fast viewing plane sampling with bounds checking"""
     plane_shape = (plane_size * 2 + 1, plane_size * 2 + 1)
     normal_plane = np.zeros(plane_shape, dtype=np.float64)
     
-    for i in nb.prange(plane_shape[0]):
+    for i in range(plane_shape[0]):
         for j in range(plane_shape[1]):
             # Calculate 3D point
             point_3d = (current_point + 
