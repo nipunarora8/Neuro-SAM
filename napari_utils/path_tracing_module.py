@@ -21,7 +21,7 @@ class PathSmoother:
     def smooth_path(self, path_points, spacing_xyz=(1.0, 1.0, 1.0), smoothing_factor=None, 
                    num_points=None, preserve_endpoints=True):
         """
-        Smooth a 3D path using B-spline interpolation with anisotropic scaling
+        Smooth a 3D path using B-spline interpolation
         
         Args:
             path_points: numpy array of shape (N, 3) with [z, y, x] coordinates
@@ -40,7 +40,7 @@ class PathSmoother:
         start_point = path_points[0].copy()
         end_point = path_points[-1].copy()
         
-        # Apply B-spline smoothing with anisotropic scaling consideration
+        # Apply B-spline smoothing
         smoothed_path = self._bspline_smooth_anisotropic(
             path_points, spacing_xyz, smoothing_factor, num_points
         )
@@ -53,11 +53,10 @@ class PathSmoother:
         return smoothed_path
     
     def _bspline_smooth_anisotropic(self, path_points, spacing_xyz, smoothing_factor=None, num_points=None):
-        """B-spline smoothing with anisotropic spacing consideration"""
+        """B-spline smoothingn"""
         if smoothing_factor is None:
-            # Auto-determine smoothing factor based on path length and anisotropy
+            # Auto-determine smoothing factor based on path length
             path_length = len(path_points)
-            # Consider anisotropy in smoothing factor calculation
             anisotropy_factor = max(spacing_xyz) / min(spacing_xyz)
             smoothing_factor = max(0, path_length - np.sqrt(2 * path_length)) * anisotropy_factor
         
@@ -72,13 +71,50 @@ class PathSmoother:
             scaled_points[:, 1] *= spacing_xyz[1]  # Y scaling  
             scaled_points[:, 2] *= spacing_xyz[0]  # X scaling
             
+            # Simplify path to remove grid jitter/staircasing which causes spline overshoots
+            # We only keep points that are a certain physical distance apart
+            simplified_points = [scaled_points[0]]
+            last_kept_idx = 0
+            min_dist_sq = 2.0 * 2.0 * min(spacing_xyz)**2  # roughly 2 pixels distance squared
+            
+            for i in range(1, len(scaled_points) - 1):
+                # Calculate distance to last kept point
+                diff = scaled_points[i] - scaled_points[last_kept_idx]
+                dist_sq = np.sum(diff**2)
+                
+                if dist_sq > min_dist_sq:
+                    simplified_points.append(scaled_points[i])
+                    last_kept_idx = i
+            
+            # Always add the last point
+            simplified_points.append(scaled_points[-1])
+            simplified_points = np.array(simplified_points)
+            
             # Prepare coordinates for spline fitting
-            x = scaled_points[:, 2]  # x coordinates (scaled)
-            y = scaled_points[:, 1]  # y coordinates (scaled)
-            z = scaled_points[:, 0]  # z coordinates (scaled)
+            if len(simplified_points) < 2:
+                return path_points.copy()
+                
+            x = simplified_points[:, 2]  # x coordinates (scaled)
+            y = simplified_points[:, 1]  # y coordinates (scaled)
+            z = simplified_points[:, 0]  # z coordinates (scaled)
             
             # Fit B-spline (k=3 for cubic, k=min(3, len-1) for short paths)
-            k = min(3, len(path_points) - 1)
+            # Use a smaller k if we simplified too much
+            k = min(3, len(simplified_points) - 1)
+            
+            # If too few points for cubic spline, just use linear interpolation or original points
+            if k < 1:
+                return path_points.copy()
+            
+            # Adjust smoothing factor for simplified path
+            # Since we have fewer points, we need less smoothing 's'
+            # Original s was based on full path length. 
+            if smoothing_factor is None:
+                 # Re-calculate s based on simplified length
+                 path_length = len(simplified_points)
+                 anisotropy_factor = max(spacing_xyz) / min(spacing_xyz)
+                 smoothing_factor = max(0, path_length - np.sqrt(2 * path_length)) * anisotropy_factor
+                
             tck, u = splprep([x, y, z], s=smoothing_factor, k=k)
             
             # Generate smoothed points
@@ -101,14 +137,14 @@ class PathSmoother:
 
 
 class PathTracingWidget(QWidget):
-    """Widget for tracing the brightest path with anisotropic scaling support."""
+    """Widget for tracing the brightest path ."""
     
     # Define signals
     path_created = Signal(str, str, object)  # path_id, path_name, path_data
     path_updated = Signal(str, str, object)  # path_id, path_name, path_data
     
     def __init__(self, viewer, image, state, scaler, scaling_update_callback):
-        """Initialize the path tracing widget with anisotropic scaling support.
+        """Initialize the path tracing widget.
         
         Parameters:
         -----------
@@ -140,7 +176,7 @@ class PathTracingWidget(QWidget):
         # Flag to prevent recursive event handling
         self.handling_event = False
         
-        # Initialize path smoother with anisotropic support
+        # Initialize path smoother
         self.path_smoother = PathSmoother()
         
         # Setup UI
@@ -258,7 +294,7 @@ class PathTracingWidget(QWidget):
         
         layout.addWidget(algorithm_section)
         
-        # Smoothing controls section with anisotropic support
+        # Smoothing controls section
         smoothing_section = QWidget()
         smoothing_layout = QVBoxLayout()
         smoothing_layout.setSpacing(2)
@@ -304,6 +340,15 @@ class PathTracingWidget(QWidget):
         buttons_layout.addWidget(self.find_path_btn)
         
         layout.addLayout(buttons_layout)
+        
+        # Add progress bar
+        from qtpy.QtWidgets import QProgressBar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setVisible(False)
+        layout.addWidget(self.progress_bar)
         
         # Management buttons
         management_layout = QHBoxLayout()
@@ -488,7 +533,7 @@ class PathTracingWidget(QWidget):
             if self.scaling_update_callback:
                 self.scaling_update_callback(order)
                 
-            napari.utils.notifications.show_info(f"Applied anisotropic scaling: X={x_nm:.1f}, Y={y_nm:.1f}, Z={z_nm:.1f} nm")
+            napari.utils.notifications.show_info(f"Applied scaling: X={x_nm:.1f}, Y={y_nm:.1f}, Z={z_nm:.1f} nm")
             
         except Exception as e:
             napari.utils.notifications.show_info(f"Error applying scaling: {str(e)}")
@@ -582,7 +627,7 @@ class PathTracingWidget(QWidget):
                 self.find_path_btn.setEnabled(num_points >= 2)
                 
                 if num_points >= 2:
-                    self.status_label.setText("Ready to find path using anisotropic algorithm!")
+                    self.status_label.setText("Ready to find path!")
                 else:
                     self.status_label.setText(f"Need at least 2 points (currently have {num_points})")
             else:
@@ -597,147 +642,183 @@ class PathTracingWidget(QWidget):
             self.handling_event = False
     
     def find_path(self):
-        """Find path using the fast waypoint A* algorithm with anisotropic smoothing"""
+        """Find path using the custom A* algorithm"""
         if self.handling_event:
             return
             
         try:
-            self.handling_event = True
-            
             if len(self.clicked_points) < 2:
                 napari.utils.notifications.show_info("Please select at least 2 points")
                 self.error_status.setText("Error: Please select at least 2 points")
                 return
             
-            # Clear any previous error messages
+            # Lock UI
+            self.handling_event = True
+            self.find_path_btn.setEnabled(False)
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setValue(0)
             self.error_status.setText("")
-            self.status_label.setText("Finding path using anisotropic algorithm...")
             
-            # Convert clicked points to the format expected by the algorithm
+            # Prepare data
             points_list = [point.tolist() for point in self.clicked_points]
-            
-            # Get algorithm settings
             enable_parallel = self.enable_parallel_cb.isChecked()
             weight_heuristic = self.weight_heuristic_spin.value()
+            enable_smoothing = self.enable_smoothing_cb.isChecked()
+            smoothing_factor = self.smoothing_factor_spin.value()
+            spacing_xyz = self.state.get('current_spacing_xyz', (1.0, 1.0, 1.0))
             
-            napari.utils.notifications.show_info("Finding brightest path")
-            
-            # Use the fast waypoint A* algorithm with weight heuristic parameter
-            path = quick_accurate_optimized_search(
-                image=self.image,
-                points_list=points_list,
-                verbose=False,
-                enable_parallel=enable_parallel,
-                my_weight_heuristic=weight_heuristic
-            )
-            
-            # Check if path was found
-            if path is not None and len(path) > 0:
-                # Convert path to numpy array
-                path_data = np.array(path)
+            from napari.qt.threading import thread_worker
+
+            @thread_worker
+            def path_worker():
+                yield (10, "Initializing search...")
                 
-                # Apply anisotropic smoothing if enabled
-                if self.enable_smoothing_cb.isChecked() and len(path_data) >= 3:
-                    smoothing_factor = self.smoothing_factor_spin.value()
-                    
-                    if smoothing_factor > 0:
-                        self.status_label.setText("Applying B-spline smoothing...")
-                        
-                        # Get current voxel spacing
-                        spacing_xyz = self.state.get('current_spacing_xyz', (1.0, 1.0, 1.0))
-                        
-                        # Smooth the path using B-spline
-                        smoothed_path = self.path_smoother.smooth_path(
+                # Run the search
+                yield (20, "Tracing bright path (A*)...")
+                # Note: quick_accurate_optimized_search is still blocking/long-running here
+                # but since we are in a thread, UI stays responsive-ish (indeterminate)
+                path = quick_accurate_optimized_search(
+                    image=self.image,
+                    points_list=points_list,
+                    verbose=False,
+                    enable_parallel=enable_parallel,
+                    my_weight_heuristic=weight_heuristic
+                )
+                
+                yield (80, "Path found. Post-processing...")
+                
+                if path is not None and len(path) > 0:
+                     path_data = np.array(path)
+                     
+                     if enable_smoothing and len(path_data) >= 3 and smoothing_factor > 0:
+                         yield (90, "Applying B-spline smoothing...")
+                         path_data = self.path_smoother.smooth_path(
                             path_data, 
                             spacing_xyz=spacing_xyz,
                             smoothing_factor=smoothing_factor,
                             preserve_endpoints=True
                         )
-                        
-                        # Update path data
-                        path_data = smoothed_path
-                        napari.utils.notifications.show_info("Applied B-spline smoothing")
+                     
+                     return path_data
+                return None
+
+            def on_yield(data):
+                progress, status = data
+                self.progress_bar.setValue(progress)
+                self.status_label.setText(status)
                 
-                # Generate path name
-                path_name = f"Path {self.next_path_number}"
-                self.next_path_number += 1
+            def on_return(path_data):
+                self.progress_bar.setValue(100)
+                self.progress_bar.setVisible(False)
+                self.handling_event = False
+                self.find_path_btn.setEnabled(True)
                 
-                # Get color for this path
-                path_color = self.get_next_color()
-                
-                # Create a new layer for this path
-                path_layer = self.viewer.add_points(
-                    path_data,
-                    name=path_name,
-                    size=3,
-                    face_color=path_color,
-                    opacity=0.8
-                )
-                
-                # Update 3D visualization if applicable
-                if self.image.ndim > 2 and self.state['traced_path_layer'] is not None:
-                    self._update_traced_path_visualization(path_data)
-                
-                # Generate a unique ID for this path
-                path_id = str(uuid.uuid4())
-                
-                # Store the path with enhanced metadata including spacing and weight heuristic
-                current_spacing = self.state.get('current_spacing_xyz', (1.0, 1.0, 1.0))
-                
-                self.state['paths'][path_id] = {
-                    'name': path_name,
-                    'data': path_data,
-                    'start': self.clicked_points[0].copy(),
-                    'end': self.clicked_points[-1].copy(),
-                    'waypoints': [point.copy() for point in self.clicked_points[1:-1]] if len(self.clicked_points) > 2 else [],
-                    'visible': True,
-                    'layer': path_layer,
-                    'original_clicks': [point.copy() for point in self.clicked_points],
-                    'smoothed': self.enable_smoothing_cb.isChecked() and self.smoothing_factor_spin.value() > 0,
-                    'algorithm': 'waypoint_astar',
-                    'parallel_processing': enable_parallel,
-                    'weight_heuristic': weight_heuristic,  # Store weight heuristic parameter
-                    'voxel_spacing_xyz': current_spacing,  # Store voxel spacing with path
-                    'anisotropic_smoothing': self.enable_smoothing_cb.isChecked()
-                }
-                
-                # Store reference to the layer
-                self.state['path_layers'][path_id] = path_layer
-                
-                # Update UI
-                algorithm_info = f" (parallel, weight={weight_heuristic:.1f})" if enable_parallel else f" (sequential, weight={weight_heuristic:.1f})"
-                smoothing_msg = " (anisotropic smoothing)" if self.state['paths'][path_id]['smoothed'] else ""
-                spacing_info = f" at {current_spacing[0]:.1f}, {current_spacing[1]:.1f}, {current_spacing[2]:.1f} nm"
-                
-                msg = f"Anisotropic path found: {len(path_data)} points{algorithm_info}{smoothing_msg}{spacing_info}"
-                napari.utils.notifications.show_info(msg)
-                self.status_label.setText(f"Success: {path_name} created with algorithm{smoothing_msg}")
-                
-                # Enable trace another path button
-                self.trace_another_btn.setEnabled(True)
-                
-                # Store current path ID in state
-                self.state['current_path_id'] = path_id
-                
-                # Emit signal that a new path was created
-                self.path_created.emit(path_id, path_name, path_data)
-                    
-            else:
-                # No path found
-                msg = "Could not find a path"
-                napari.utils.notifications.show_info(msg)
-                self.error_status.setText("Error: No path found")
-                self.status_label.setText("Try selecting different points or adjusting parameters")
-                
+                if path_data is None:
+                    self.status_label.setText("No path found.")
+                    napari.utils.notifications.show_warning("No path found.")
+                else:
+                    self.status_label.setText("Path complete!")
+                    self._finalize_path(path_data)
+
+            def on_error(e):
+                self.handling_event = False
+                self.find_path_btn.setEnabled(True)
+                self.progress_bar.setVisible(False)
+                self.progress_bar.setValue(0)
+                self.status_label.setText("Error during tracing")
+                self.error_status.setText(f"Error: {str(e)}")
+                napari.utils.notifications.show_error(f"Tracing failed: {e}")
+                print(f"Tracing error: {e}")
+
+            # Start worker
+            worker = path_worker()
+            worker.yielded.connect(on_yield)
+            worker.returned.connect(on_return)
+            worker.errored.connect(on_error)
+            worker.start()
+            
         except Exception as e:
-            msg = f"Error in path finding: {e}"
-            napari.utils.notifications.show_info(msg)
-            self.error_status.setText(f"Error: {str(e)}")
-            print(f"Path finding error: {str(e)}")
-            import traceback
-            traceback.print_exc()
-        finally:
             self.handling_event = False
+            self.find_path_btn.setEnabled(True)
+            self.progress_bar.setVisible(False)
+            print(f"Setup error: {e}")
+            
+    def _finalize_path(self, path_data):
+        """Handle successful path creation (moved from main logic)"""
+        try:
+            # Generate path name
+            path_name = f"Path {self.next_path_number}"
+            self.next_path_number += 1
+            
+            # Get color for this path
+            path_color = self.get_next_color()
+            
+            # Create a new layer for this path
+            path_layer = self.viewer.add_points(
+                path_data,
+                name=path_name,
+                size=3,
+                face_color=path_color,
+                opacity=0.8
+            )
+            
+            # Update 3D visualization if applicable
+            if self.image.ndim > 2 and self.state['traced_path_layer'] is not None:
+                self._update_traced_path_visualization(path_data)
+            
+            # Generate a unique ID for this path
+            path_id = str(uuid.uuid4())
+            
+            # Store the path with enhanced metadata
+            current_spacing = self.state.get('current_spacing_xyz', (1.0, 1.0, 1.0))
+            
+            # Retrieve current settings for metadata
+            enable_parallel = self.enable_parallel_cb.isChecked()
+            weight_heuristic = self.weight_heuristic_spin.value()
+            current_spacing = self.state.get('current_spacing_xyz', (1.0, 1.0, 1.0))
+            
+            self.state['paths'][path_id] = {
+                'name': path_name,
+                'data': path_data,
+                'start': self.clicked_points[0].copy(),
+                'end': self.clicked_points[-1].copy(),
+                'waypoints': [point.copy() for point in self.clicked_points[1:-1]] if len(self.clicked_points) > 2 else [],
+                'visible': True,
+                'layer': path_layer,
+                'original_clicks': [point.copy() for point in self.clicked_points],
+                'smoothed': self.enable_smoothing_cb.isChecked() and self.smoothing_factor_spin.value() > 0,
+                'algorithm': 'waypoint_astar',
+                'parallel_processing': enable_parallel,
+                'weight_heuristic': weight_heuristic,  # Store weight heuristic parameter
+                'voxel_spacing_xyz': current_spacing,  # Store voxel spacing with path
+                'anisotropic_smoothing': self.enable_smoothing_cb.isChecked()
+            }
+            
+            # Store reference to the layer
+            self.state['path_layers'][path_id] = path_layer
+            
+            # Update UI
+            algorithm_info = f" (parallel, weight={weight_heuristic:.1f})" if enable_parallel else f" (sequential, weight={weight_heuristic:.1f})"
+            smoothing_msg = " (smoothing)" if self.state['paths'][path_id]['smoothed'] else ""
+            spacing_info = f" at {current_spacing[0]:.1f}, {current_spacing[1]:.1f}, {current_spacing[2]:.1f} nm"
+            
+            msg = f"Path found: {len(path_data)} points {spacing_info}"
+            napari.utils.notifications.show_info(msg)
+            self.status_label.setText(f"Success: {path_name} created")
+            
+            # Enable trace another path button
+            self.trace_another_btn.setEnabled(True)
+            
+            # Store current path ID in state
+            self.state['current_path_id'] = path_id
+            
+            # Emit signal that a new path was created
+            self.path_created.emit(path_id, path_name, path_data)
+            
+        except Exception as e:
+            msg = f"Error finalizing path: {e}"
+            napari.utils.notifications.show_error(msg)
+            print(f"Finalize error: {e}")
     
     def _update_traced_path_visualization(self, path):
         """Update the 3D traced path visualization"""
@@ -808,7 +889,7 @@ class PathTracingWidget(QWidget):
         # Update spacing display
         self._update_spacing_display()
         
-        napari.utils.notifications.show_info("All points cleared. Ready to start over with anisotropic scaling.")
+        napari.utils.notifications.show_info("All points cleared. Ready to start over.")
     
     def get_next_color(self):
         """Get the next color from the predefined list"""

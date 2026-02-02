@@ -8,7 +8,6 @@ from napari_utils.path_tracing_module import PathTracingWidget
 from napari_utils.segmentation_module import SegmentationWidget
 from napari_utils.punet_widget import PunetSpineSegmentationWidget
 from napari_utils.visualization_module import PathVisualizationWidget
-from napari_utils.visualization_module import PathVisualizationWidget
 from napari_utils.anisotropic_scaling import AnisotropicScaler
 
 import sys
@@ -107,7 +106,7 @@ class NeuroSAMWidget(QWidget):
         self.tabs.addTab(self.path_tracing_widget, "Path Tracing")
         self.tabs.addTab(self.path_visualization_widget, "Path Management")
         self.tabs.addTab(self.segmentation_widget, "Dendrite Segmentation")
-        self.tabs.addTab(self.punet_widget, "Spine Segmentation (Prob U-Net)")
+        self.tabs.addTab(self.punet_widget, "Spine Segmentation")
         
         # Connect signals between modules
         self._connect_signals()
@@ -729,8 +728,13 @@ class NeuroSAMWidget(QWidget):
         """Add a button to the viewer's bottom toolbar for tubular view"""
         try:
              # Access the internal Qt viewer buttons layout
-             if hasattr(self.viewer.window, 'qt_viewer'):
+             qt_viewer = None
+             if hasattr(self.viewer.window, '_qt_viewer'):
+                 qt_viewer = self.viewer.window._qt_viewer
+             elif hasattr(self.viewer.window, 'qt_viewer'):
                  qt_viewer = self.viewer.window.qt_viewer
+            
+             if qt_viewer:
                  
                  # The buttons are usually in qt_viewer.viewerButtons
                  if hasattr(qt_viewer, 'viewerButtons'):
