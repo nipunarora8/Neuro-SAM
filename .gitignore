@@ -16,3 +16,5 @@ wandb/
 # *.torch
 # results
 *.log
+dist/
+src/*.egg-info/
