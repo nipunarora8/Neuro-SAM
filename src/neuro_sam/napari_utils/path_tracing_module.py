@@ -3,7 +3,7 @@ import numpy as np
 import uuid
 from qtpy.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QLabel, 
-    QHBoxLayout, QFrame, QCheckBox, QComboBox, QDoubleSpinBox
+    QHBoxLayout, QFrame, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog
 )
 from qtpy.QtCore import Signal
 # import sys
@@ -155,7 +155,7 @@ class PathTracingWidget(QWidget):
     path_created = Signal(str, str, object)  # path_id, path_name, path_data
     path_updated = Signal(str, str, object)  # path_id, path_name, path_data
     
-    def __init__(self, viewer, image, state, scaler, scaling_update_callback):
+    def __init__(self, viewer, image, state, scaler, scaling_update_callback, load_image_callback=None):
         """Initialize the path tracing widget.
         
         Parameters:
@@ -177,6 +177,7 @@ class PathTracingWidget(QWidget):
         self.state = state
         self.scaler = scaler
         self.scaling_update_callback = scaling_update_callback
+        self.load_image_callback = load_image_callback
         
         # List to store waypoints as they are clicked
         self.clicked_points = []
@@ -263,6 +264,12 @@ class PathTracingWidget(QWidget):
         waypoints_layout.setContentsMargins(2, 2, 2, 2)
         waypoints_section.setLayout(waypoints_layout)
         
+        self.load_data_btn = QPushButton("Load Your Data")
+        self.load_data_btn.setFixedHeight(22)
+        self.load_data_btn.setStyleSheet("font-weight: bold; background-color: #2196F3; color: white;")
+        self.load_data_btn.clicked.connect(self.load_data)
+        waypoints_layout.addWidget(self.load_data_btn)
+
         self.select_waypoints_btn = QPushButton("Start Point Selection")
         self.select_waypoints_btn.setFixedHeight(22)
         self.select_waypoints_btn.clicked.connect(self.activate_waypoints_layer)
@@ -788,7 +795,7 @@ class PathTracingWidget(QWidget):
             enable_parallel = self.enable_parallel_cb.isChecked()
             weight_heuristic = self.weight_heuristic_spin.value()
             current_spacing = self.state.get('current_spacing_xyz', (1.0, 1.0, 1.0))
-            
+            # Store the path with enhanced metadata
             self.state['paths'][path_id] = {
                 'name': path_name,
                 'data': path_data,
@@ -798,39 +805,55 @@ class PathTracingWidget(QWidget):
                 'visible': True,
                 'layer': path_layer,
                 'original_clicks': [point.copy() for point in self.clicked_points],
-                'smoothed': self.enable_smoothing_cb.isChecked() and self.smoothing_factor_spin.value() > 0,
+                'processed': True,
+                # Algorithm metadata
                 'algorithm': 'waypoint_astar',
                 'parallel_processing': enable_parallel,
-                'weight_heuristic': weight_heuristic,  # Store weight heuristic parameter
-                'voxel_spacing_xyz': current_spacing,  # Store voxel spacing with path
-                'anisotropic_smoothing': self.enable_smoothing_cb.isChecked()
+                'weight_heuristic': weight_heuristic,
+                'smoothed': self.enable_smoothing_cb.isChecked(),
+                'smoothing_factor': self.smoothing_factor_spin.value(),
+                # Voxel spacing used during creation
+                'voxel_spacing_xyz': current_spacing
             }
             
-            # Store reference to the layer
-            self.state['path_layers'][path_id] = path_layer
-            
-            # Update UI
-            algorithm_info = f" (parallel, weight={weight_heuristic:.1f})" if enable_parallel else f" (sequential, weight={weight_heuristic:.1f})"
-            smoothing_msg = " (smoothing)" if self.state['paths'][path_id]['smoothed'] else ""
-            spacing_info = f" at {current_spacing[0]:.1f}, {current_spacing[1]:.1f}, {current_spacing[2]:.1f} nm"
-            
-            msg = f"Path found: {len(path_data)} points {spacing_info}"
-            napari.utils.notifications.show_info(msg)
-            self.status_label.setText(f"Success: {path_name} created")
-            
-            # Enable trace another path button
-            self.trace_another_btn.setEnabled(True)
-            
-            # Store current path ID in state
-            self.state['current_path_id'] = path_id
-            
-            # Emit signal that a new path was created
+            # Add to path visualization list
             self.path_created.emit(path_id, path_name, path_data)
             
+            # Reset UI
+            self.clicked_points = []
+            self.state['waypoints_layer'].data = np.empty((0, self.image.ndim))
+            self.waypoints_status.setText("Status: Path created. Ready for next.")
+            self.status_label.setText(f"Path {path_name} created")
+            self.find_path_btn.setEnabled(False)
+            
+            # Enable trace another
+            self.trace_another_btn.setEnabled(True)
+            
+            # Log success
+            print(f"Path created: {path_name} with {len(path_data)} points")
+            
         except Exception as e:
-            msg = f"Error finalizing path: {e}"
-            napari.utils.notifications.show_error(msg)
-            print(f"Finalize error: {e}")
+            self.status_label.setText("Error finalizing path")
+            napari.utils.notifications.show_error(f"Error creating path layer: {str(e)}")
+            print(f"Error finalizing path: {e}")
+            
+    def load_data(self):
+        """Open file dialog to load user data"""
+        if not self.load_image_callback:
+            napari.utils.notifications.show_warning("Image loading not configured.")
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Image Data",
+            "",
+            "Images (*.tif *.tiff *.d3set);;All Files (*)"
+        )
+        
+        if file_path:
+            self.load_image_callback(file_path)
+            
+
     
     def _update_traced_path_visualization(self, path):
         """Update the 3D traced path visualization"""

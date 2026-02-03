@@ -12,6 +12,8 @@ from neuro_sam.napari_utils.anisotropic_scaling import AnisotropicScaler
 
 import sys
 import os
+import tifffile
+from neuro_sam.utils import pad_image_for_patches
 # Add root directory to path to import neuro_sam.brightest_path_lib
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from neuro_sam.brightest_path_lib.visualization.tube_data import create_tube_data
@@ -92,7 +94,8 @@ class NeuroSAMWidget(QWidget):
         
         # Initialize modules with scaled image support
         self.path_tracing_widget = PathTracingWidget(
-            self.viewer, self.current_image, self.state, self.scaler, self._on_scaling_update
+            self.viewer, self.current_image, self.state, self.scaler, self._on_scaling_update,
+            load_image_callback=self.load_new_image
         )
         self.segmentation_widget = SegmentationWidget(self.viewer, self.current_image, self.state)
         # New Prob U-Net Widget
@@ -1008,8 +1011,6 @@ class NeuroSAMWidget(QWidget):
                 # Optionally change icon color or state here if needed
                 # For now, just keep the icon stable
                     
-                napari.utils.notifications.show_info(f"Entered Tubular View Mode for {path_name}")
-
             except Exception as e:
                 print(f"Error generating view: {e}")
                 # Restore state on error
@@ -1017,3 +1018,117 @@ class NeuroSAMWidget(QWidget):
                      if layer.name in self.saved_layer_states:
                          layer.visible = self.saved_layer_states[layer.name]
                 napari.utils.notifications.show_error(f"Error: {e}")
+
+    def load_new_image(self, file_path):
+        """
+        Load a new image from disk and reset the plugin state.
+        
+        Args:
+            file_path (str): Path to the image file
+        """
+        try:
+            print(f"Loading new image from: {file_path}")
+            napari.utils.notifications.show_info(f"Loading {os.path.basename(file_path)}...")
+            
+            # Load the image
+            # Try tifffile first (best for 3D stacks)
+            try:
+                new_image = tifffile.imread(file_path)
+            except Exception as e:
+                # Fallback to skimage/other via napari? Or just raise
+                print(f"tifffile failed: {e}. Trying simple import...")
+                import skimage.io
+                new_image = skimage.io.imread(file_path)
+
+            # Ensure image is at least 3D
+            if new_image.ndim < 3:
+                 napari.utils.notifications.show_warning("Loaded image must be at least 3D (Z, Y, X).")
+                 return
+            
+            # Normalize image to 0-1 if needed
+            if new_image.max() > 1:
+                new_image = new_image.astype(np.float32)
+                image_min, image_max = new_image.min(), new_image.max()
+                if image_max > image_min:
+                    new_image = (new_image - image_min) / (image_max - image_min)
+                print(f"Normalized loaded image from range [{image_min:.2f}, {image_max:.2f}] to [0, 1]")
+
+            # Pad image for patch-based processing
+            new_image, padding_amounts, _ = pad_image_for_patches(new_image, patch_size=128, pad_value=0)
+            if padding_amounts[0] > 0 or padding_amounts[1] > 0:
+                print(f"Padded loaded image by {padding_amounts} pixels")
+
+            
+            # Clean up existing analysis layers
+            layers_to_remove = []
+            for layer in self.viewer.layers:
+                # Remove anything that isn't the main image layer (which we will update)
+                # Or maybe better to remove everything and re-add basic layers
+                pass 
+            
+            # Reset state
+            self.state['paths'] = {}
+            self.state['path_layers'] = {}
+            self.state['current_path_id'] = None
+            self.state['spine_positions'] = []
+            self.state['spine_layers'] = {}
+            self.state['spine_data'] = {}
+            
+            self.saved_layer_states.clear()
+            self.tube_view_active = False
+            
+            # Clear layers in viewer except main image? 
+            # Actually, let's remove generated layers to avoid confusion
+            
+            # Identify analysis layers
+            to_remove = []
+            for layer in self.viewer.layers:
+                if layer != self.image_layer and 'Point Selection' not in layer.name: # Keep point selection layer but clear it
+                     to_remove.append(layer)
+            
+            for l in to_remove:
+                self.viewer.layers.remove(l)
+                
+            # Clear waypoints layer
+            if self.state['waypoints_layer'] is not None:
+                self.state['waypoints_layer'].data = np.empty((0, new_image.ndim))
+            
+            # Update internal image references
+            self.original_image = new_image
+            
+            # Reset scaling to original
+            self.scaler = AnisotropicScaler(self.state['current_spacing_xyz']) # Keep previous spacing or reset?
+            # Better to keep previous spacing settings if user set them, but apply to new image dimensions
+            # Actually user probably wants to reset scaling relative to new image
+            self.scaler = AnisotropicScaler(self.scaler.original_spacing_xyz) 
+            
+            self.current_image = new_image.copy()
+            
+            # Update image layer
+            self.image_layer.data = self.current_image
+            self.image_layer.name = f"Image ({os.path.basename(file_path)})"
+            
+            # Reset contrast limits (important for normalized data)
+            self.image_layer.contrast_limits = (0, 1)
+            
+            # Update all modules
+            self._update_modules_with_scaled_image()
+            
+            # Update UI in path tracing to reset scaling controls
+            if hasattr(self.path_tracing_widget, '_reset_scaling'):
+                 # We simply update the spinner values, scaler is already reset
+                 self.path_tracing_widget.x_spacing_spin.setValue(self.scaler.original_spacing_xyz[0])
+                 self.path_tracing_widget.y_spacing_spin.setValue(self.scaler.original_spacing_xyz[1])
+                 self.path_tracing_widget.z_spacing_spin.setValue(self.scaler.original_spacing_xyz[2])
+                 self.path_tracing_widget.scaling_status.setText("Status: Image loaded (Original spacing)")
+
+            # Reset status
+            self.path_info.setText(f"Status: Loaded {os.path.basename(file_path)}")
+            napari.utils.notifications.show_info(f"Successfully loaded {os.path.basename(file_path)}")
+            
+        except Exception as e:
+            msg = f"Failed to load image: {str(e)}"
+            print(msg)
+            napari.utils.notifications.show_error(msg)
+            import traceback
+            traceback.print_exc()

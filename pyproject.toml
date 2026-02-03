@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuro-sam"
-version = "0.1.13"
+version = "0.1.15"
 description = "Neuro-SAM: Foundation Models for Dendrite and Dendritic Spine Segmentation"
 readme = "README.md"
 authors = [
   { name = "Nipun Arora", email = "nipunarora8@yahoo.com" },
+  { name = "Munna Singh", email = "singhmunna.singh@fau.de" },
 ]
 license = { file = "LICENSE" }
 classifiers = [
@@ -42,7 +43,8 @@ dependencies = [
     "flammkuchen",
     "albumentations",
     "wandb",
-    "tensorflow"
+    "tensorflow",
+    "imagecodecs"
 ]
 requires-python = ">=3.10"
 
