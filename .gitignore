@@ -18,3 +18,4 @@ wandb/
 *.log
 dist/
 src/*.egg-info/
+*.tif

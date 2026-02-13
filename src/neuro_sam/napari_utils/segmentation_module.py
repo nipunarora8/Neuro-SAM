@@ -18,6 +18,7 @@ class SegmentationWidget(QWidget):
     
     # Define signals
     segmentation_completed = Signal(str, str)  # path_id, layer_name
+    path_selected = Signal(str)  # path_id
     
     def __init__(self, viewer, image, state):
         """Initialize the segmentation widget with boundary smoothing.
@@ -201,6 +202,9 @@ class SegmentationWidget(QWidget):
             if len(selected_items) == 1:
                 path_id = selected_items[0].data(100)
                 if path_id in self.state['paths']:
+                    # Emit signal that path is selected (Fix for Tube View)
+                    self.path_selected.emit(path_id)
+                    
                     # Store the selected path ID for segmentation
                     self.selected_path_id = path_id
                     path_name = self.state['paths'][path_id]['name']

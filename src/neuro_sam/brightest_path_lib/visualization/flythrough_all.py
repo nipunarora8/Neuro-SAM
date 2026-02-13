@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from neuro_sam.brightest_path_lib.algorithm import WaypointBidirectionalAStarSearch
+# from neuro_sam.brightest_path_lib.algorithm import WaypointBidirectionalAStarSearch
+from neuro_sam.brightest_path_lib.algorithm import quick_accurate_optimized_search
 
-def create_integrated_flythrough(image, start_point, goal_point, waypoints=None, 
+def create_integrated_flythrough(image, pointsss,
                                output_file='integrated_flythrough.mp4', fps=15,
-                               zoom_size=50, field_of_view=50, view_distance=5, 
+                               zoom_size=40, field_of_view=50, view_distance=5, 
                                reference_image=None, reference_cmap='viridis', 
                                reference_alpha=0.7):
     """
@@ -55,18 +56,20 @@ def create_integrated_flythrough(image, start_point, goal_point, waypoints=None,
         elif reference_image.shape != image.shape:
             raise ValueError("Reference image must have same dimensions as main image")
     
-    # Run the brightest path algorithm
-    astar = WaypointBidirectionalAStarSearch(
-        image=image,
-        start_point=np.array(start_point),
-        goal_point=np.array(goal_point),
-        waypoints=waypoints if waypoints else None
-    )
+    path  = quick_accurate_optimized_search(image, pointsss, verbose=False)
+
+    # # Run the brightest path algorithm
+    # astar = WaypointBidirectionalAStarSearch(
+    #     image=image,
+    #     start_point=np.array(start_point),
+    #     goal_point=np.array(goal_point),
+    #     waypoints=waypoints if waypoints else None
+    # )
     
-    path = astar.search(verbose=True)
+    # path = astar.search(verbose=True)
     
-    if not astar.found_path:
-        raise ValueError("Could not find a path through the image")
+    # if not astar.found_path:
+    #     raise ValueError("Could not find a path through the image")
     
     # Convert path to numpy array for easier manipulation
     path_array = np.array(path)
@@ -149,8 +152,8 @@ def create_integrated_flythrough(image, start_point, goal_point, waypoints=None,
         # Plot the path projection on this slice
         # Find all path points on the current z-slice
         slice_points = path_array[path_array[:, 0] == z]
-        if len(slice_points) > 0:
-            ax_slice.plot(slice_points[:, 2], slice_points[:, 1], 'r-', linewidth=2)
+        # if len(slice_points) > 0:
+        #     ax_slice.plot(slice_points[:, 2], slice_points[:, 1], 'r-', linewidth=2)
         
         # Mark the current position
         ax_slice.scatter(x, y, c='red', s=100, marker='o')
@@ -158,14 +161,16 @@ def create_integrated_flythrough(image, start_point, goal_point, waypoints=None,
         # Plot "shadows" of the path from other slices (lighter color)
         # Points from slices above current position
         above_points = path_array[path_array[:, 0] < z]
-        if len(above_points) > 0:
-            ax_slice.plot(above_points[:, 2], above_points[:, 1], 'r-', alpha=0.3, linewidth=1)
+        # if len(above_points) > 0:
+        #     ax_slice.plot(above_points[:, 2], above_points[:, 1], 'r-', alpha=0.3, linewidth=1)
             
-        # Points from slices below current position
+        # # Points from slices below current position
         below_points = path_array[path_array[:, 0] > z]
-        if len(below_points) > 0:
-            ax_slice.plot(below_points[:, 2], below_points[:, 1], 'r-', alpha=0.3, linewidth=1)
+        # if len(below_points) > 0:
+        #     ax_slice.plot(below_points[:, 2], below_points[:, 1], 'r-', alpha=0.3, linewidth=1)
         
+        ax_slice.plot([point[2] for point in path_array], [point[1] for point in path_array], 'r', linewidth=2)
+
         # Add a rectangle showing the zoomed area
         half_size = zoom_size // 2
         zoom_rect = plt.Rectangle((x - half_size, y - half_size), 
@@ -176,6 +181,7 @@ def create_integrated_flythrough(image, start_point, goal_point, waypoints=None,
         ax_slice.set_title(f'Slice Z={z} - Frame {frame_idx+1}/{len(path)}')
         ax_slice.set_xlabel('X')
         ax_slice.set_ylabel('Y')
+        ax_slice.axis('off')  # Hide axes for cleaner look
         
         #------------------ Zoomed Patch View (Bottom Left) ------------------#
         # Get coordinates for the zoom window, handling edges of the image
@@ -376,6 +382,8 @@ def create_integrated_flythrough(image, start_point, goal_point, waypoints=None,
             ax_tube.set_title(f"In-Tube View (Forward Direction)")
         else:
             ax_tube.text(0.5, 0.5, "Out of bounds", ha='center', va='center', transform=ax_tube.transAxes)
+        
+        ax_tube.axis('off')  # Hide axes for cleaner look
         
         # Add a super title for the whole figure
         plt.suptitle(f"Brightest Path Flythrough - Position: Z={z}, Y={y}, X={x}", fontsize=14)

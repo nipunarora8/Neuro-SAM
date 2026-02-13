@@ -94,8 +94,7 @@ class NeuroSAMWidget(QWidget):
         
         # Initialize modules with scaled image support
         self.path_tracing_widget = PathTracingWidget(
-            self.viewer, self.current_image, self.state, self.scaler, self._on_scaling_update,
-            load_image_callback=self.load_new_image
+            self.viewer, self.current_image, self.state, self.scaler, self._on_scaling_update
         )
         self.segmentation_widget = SegmentationWidget(self.viewer, self.current_image, self.state)
         # New Prob U-Net Widget
@@ -543,7 +542,9 @@ class NeuroSAMWidget(QWidget):
         self.path_visualization_widget.path_deleted.connect(self.on_path_deleted)
         
         # Connect segmentation signals
+        # Connect segmentation signals
         self.segmentation_widget.segmentation_completed.connect(self.on_segmentation_completed)
+        self.segmentation_widget.path_selected.connect(self.on_path_selected)
 
     
     def on_path_created(self, path_id, path_name, path_data):

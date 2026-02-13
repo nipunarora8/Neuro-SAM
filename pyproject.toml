@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuro-sam"
-version = "0.1.15"
-description = "Neuro-SAM: Foundation Models for Dendrite and Dendritic Spine Segmentation"
+version = "0.1.16"
+description = "Neuro-SAM: Foundation Model for Dendrite and Dendritic Spine Segmentation"
 readme = "README.md"
 authors = [
   { name = "Nipun Arora", email = "nipunarora8@yahoo.com" },

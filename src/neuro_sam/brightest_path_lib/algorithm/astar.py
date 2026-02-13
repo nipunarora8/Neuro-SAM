@@ -186,7 +186,8 @@ class BidirectionalAStarSearch:
         heuristic_function: HeuristicFunction = HeuristicFunction.EUCLIDEAN,
         open_nodes=None,
         use_hierarchical: bool = False,
-        weight_heuristic: float = 1.0
+        weight_heuristic: float = 1.0,
+        z_bounds: Optional[Tuple[int, int]] = None
     ):
         """Initialize bidirectional A* search
         
@@ -218,6 +219,7 @@ class BidirectionalAStarSearch:
         self.open_nodes = open_nodes
         self.weight_heuristic = weight_heuristic
         self.use_hierarchical = use_hierarchical
+        self.z_bounds = z_bounds
 
         # Configuration for reciprocal cost function
         if cost_function == CostFunction.RECIPROCAL:
@@ -385,7 +387,14 @@ class BidirectionalAStarSearch:
         max_intensity = self.image_stats.max_intensity
         x_min, x_max = self.image_stats.x_min, self.image_stats.x_max
         y_min, y_max = self.image_stats.y_min, self.image_stats.y_max
-        z_min, z_max = self.image_stats.z_min, self.image_stats.z_max
+        y_min, y_max = self.image_stats.y_min, self.image_stats.y_max
+        
+        # Use provided Z-bounds or default to image bounds
+        if self.z_bounds is not None:
+            z_min = max(self.image_stats.z_min, self.z_bounds[0])
+            z_max = min(self.image_stats.z_max, self.z_bounds[1])
+        else:
+            z_min, z_max = self.image_stats.z_min, self.image_stats.z_max
         
         reciprocal_min = self.cost_function.RECIPROCAL_MIN
         reciprocal_max = self.cost_function.RECIPROCAL_MAX

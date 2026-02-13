@@ -164,6 +164,11 @@ class PathVisualizationWidget(QWidget):
             self.delete_path_btn.setEnabled(num_selected > 0)
             self.view_path_btn.setEnabled(num_selected == 1)
             self.connect_paths_btn.setEnabled(num_selected == 2)
+            
+            # Emit signal if exactly one path is selected (Fix for Tube View)
+            if num_selected == 1:
+                path_id = selected_items[0].data(100)
+                self.path_selected.emit(path_id)
         except Exception as e:
             napari.utils.notifications.show_info(f"Error handling selection change: {str(e)}")
         finally:

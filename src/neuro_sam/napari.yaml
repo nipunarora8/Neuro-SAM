@@ -1,0 +1,10 @@
+name: neuro-sam
+display_name: Neuro-SAM
+contributions:
+  commands:
+    - id: neuro-sam.make_widget
+      python_name: neuro_sam.napari_utils.main_widget:NeuroSAMWidget
+      title: Neuro-SAM
+  widgets:
+    - command: neuro-sam.make_widget
+      display_name: Neuro-SAM
